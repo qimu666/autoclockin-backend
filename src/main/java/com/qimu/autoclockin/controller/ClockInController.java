@@ -9,7 +9,6 @@ import com.qimu.autoclockin.exception.BusinessException;
 import com.qimu.autoclockin.model.entity.ClockInInfo;
 import com.qimu.autoclockin.model.entity.User;
 import com.qimu.autoclockin.model.enums.ClockInStatusEnum;
-import com.qimu.autoclockin.model.vo.ClockInInfoVo;
 import com.qimu.autoclockin.service.ClockInInfoService;
 import com.qimu.autoclockin.service.UserService;
 import lombok.extern.slf4j.Slf4j;
@@ -23,12 +22,10 @@ import org.springframework.web.bind.annotation.RestController;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
-import java.time.Duration;
-import java.time.LocalDateTime;
-import java.time.LocalTime;
 import java.util.concurrent.TimeUnit;
 
 import static com.qimu.autoclockin.constant.ClockInConstant.SIGN_USER_GROUP;
+import static com.qimu.autoclockin.job.ClockInJob.getObtainClockInTime;
 
 /**
  * @Author: QiMu
@@ -60,25 +57,11 @@ public class ClockInController {
         LambdaQueryWrapper<ClockInInfo> clockInInfoQueryWrapper = new LambdaQueryWrapper<>();
         clockInInfoQueryWrapper.eq(ClockInInfo::getUserId, user.getId());
         ClockInInfo clockInInfo = clockInInfoService.getOne(clockInInfoQueryWrapper);
-        long secondsUntilUserTime = getObtainClockInTime(clockInInfo);
+        long secondsUntilUserTime = getObtainClockInTime(user.getId(), clockInInfo.getClockInTime());
         if (secondsUntilUserTime > 0) {
             redisTemplate.opsForValue().set(SIGN_USER_GROUP + user.getId(), String.valueOf(user.getId()), secondsUntilUserTime, TimeUnit.SECONDS);
         }
         return ResultUtils.success(true);
-    }
-
-    /**
-     * 获取打卡时间
-     *
-     * @param clockInInfoServiceOne 打卡信息服务
-     * @return long
-     */
-    private long getObtainClockInTime(ClockInInfo clockInInfoServiceOne) {
-        LocalDateTime currentDateTime = LocalDateTime.now();
-        LocalTime userTime = LocalTime.parse(clockInInfoServiceOne.getClockInTime());
-        LocalDateTime userDateTime = currentDateTime.with(userTime);
-        Duration duration = Duration.between(currentDateTime, userDateTime);
-        return duration.getSeconds();
     }
 
     @PostMapping("/isNotWrite")
@@ -96,9 +79,10 @@ public class ClockInController {
         String address = clockInInfoServiceOne.getAddress();
         String deviceType = clockInInfoServiceOne.getDeviceType();
         String deviceId = clockInInfoServiceOne.getDeviceId();
+        String clockInTime = clockInInfoServiceOne.getClockInTime();
         String longitude = clockInInfoServiceOne.getLongitude();
         String latitude = clockInInfoServiceOne.getLatitude();
-        if (StringUtils.isAnyBlank(address, deviceType, deviceId, latitude, longitude)) {
+        if (StringUtils.isAnyBlank(address, deviceType, deviceId, latitude, longitude, clockInTime)) {
             return ResultUtils.success(true);
         }
         return ResultUtils.success(false);
@@ -121,7 +105,12 @@ public class ClockInController {
             throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
         }
         clockInInfo.setStatus(ClockInStatusEnum.STARTING.getValue());
-        return ResultUtils.success(clockInInfoService.updateById(clockInInfo));
+        boolean b = clockInInfoService.updateById(clockInInfo);
+        long secondsUntilUserTime = getObtainClockInTime(clockInInfo.getUserId(), clockInInfo.getClockInTime());
+        if (secondsUntilUserTime > 0) {
+            redisTemplate.opsForValue().set(SIGN_USER_GROUP + clockInInfo.getUserId(), String.valueOf(clockInInfo.getUserId()), secondsUntilUserTime, TimeUnit.SECONDS);
+        }
+        return ResultUtils.success(b);
     }
 
     /**
@@ -142,6 +131,8 @@ public class ClockInController {
             throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
         }
         clockInInfo.setStatus(ClockInStatusEnum.PAUSED.getValue());
-        return ResultUtils.success(clockInInfoService.updateById(clockInInfo));
+        boolean b = clockInInfoService.updateById(clockInInfo);
+        redisTemplate.delete(SIGN_USER_GROUP + clockInInfo.getUserId());
+        return ResultUtils.success(b);
     }
 }
