@@ -15,17 +15,24 @@ import com.qimu.autoclockin.model.dto.clockInInfo.ClockInInfoQueryRequest;
 import com.qimu.autoclockin.model.dto.clockInInfo.ClockInInfoUpdateRequest;
 import com.qimu.autoclockin.model.entity.ClockInInfo;
 import com.qimu.autoclockin.model.entity.User;
+import com.qimu.autoclockin.model.enums.ClockInStatusEnum;
+import com.qimu.autoclockin.model.vo.UserVO;
 import com.qimu.autoclockin.service.ClockInInfoService;
 import com.qimu.autoclockin.service.UserService;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
+
+import static com.qimu.autoclockin.constant.ClockInConstant.SIGN_USER_GROUP;
+import static com.qimu.autoclockin.job.ClockInJob.getObtainClockInTime;
 
 /**
  * 打卡信息接口
@@ -39,7 +46,8 @@ public class ClockInInfoController {
 
     @Resource
     private ClockInInfoService clockInInfoService;
-
+    @Resource
+    private RedisTemplate<String, String> redisTemplate;
     @Resource
     private UserService userService;
 
@@ -106,9 +114,8 @@ public class ClockInInfoController {
      * @return {@link BaseResponse}<{@link Boolean}>
      */
     @PostMapping("/update")
-    public BaseResponse<Boolean> updateClockInInfo(@RequestBody ClockInInfoUpdateRequest clockInInfoUpdateRequest,
-                                                   HttpServletRequest request) {
-        if (clockInInfoUpdateRequest == null) {
+    public BaseResponse<Boolean> updateClockInInfo(@RequestBody ClockInInfoUpdateRequest clockInInfoUpdateRequest, HttpServletRequest request) {
+        if (ObjectUtils.anyNull(clockInInfoUpdateRequest, clockInInfoUpdateRequest.getId()) || clockInInfoUpdateRequest.getId() <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
         ClockInInfo clockInInfo = new ClockInInfo();
@@ -116,19 +123,23 @@ public class ClockInInfoController {
         // 参数校验
         clockInInfoService.validClockInInfo(clockInInfo, false);
         User user = userService.getLoginUser(request);
+        long id = clockInInfoUpdateRequest.getId();
         // 判断是否存在
-        LambdaQueryWrapper<ClockInInfo> clockInInfoQueryWrapper = new LambdaQueryWrapper<>();
-        clockInInfoQueryWrapper.eq(ClockInInfo::getUserId, user.getId());
-        ClockInInfo oldClockInInfo = clockInInfoService.getOne(clockInInfoQueryWrapper);
+        ClockInInfo oldClockInInfo = clockInInfoService.getById(id);
         if (oldClockInInfo == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
         }
         // 仅本人或管理员可修改
-        if (!oldClockInInfo.getUserId().equals(user.getId()) && !userService.isAdmin(request)) {
+        if (!userService.isAdmin(request) && !oldClockInInfo.getUserId().equals(user.getId())) {
             throw new BusinessException(ErrorCode.NO_AUTH_ERROR);
         }
-        clockInInfo.setId(oldClockInInfo.getId());
         boolean result = clockInInfoService.updateById(clockInInfo);
+        if (oldClockInInfo.getStatus().equals(ClockInStatusEnum.STARTING.getValue())) {
+            long secondsUntilUserTime = getObtainClockInTime(user.getId(), clockInInfoUpdateRequest.getClockInTime());
+            if (secondsUntilUserTime > 0) {
+                redisTemplate.opsForValue().set(SIGN_USER_GROUP + oldClockInInfo.getUserId(), String.valueOf(oldClockInInfo.getUserId()), secondsUntilUserTime, TimeUnit.SECONDS);
+            }
+        }
         return ResultUtils.success(result);
     }
 
@@ -212,11 +223,8 @@ public class ClockInInfoController {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
         QueryWrapper<ClockInInfo> queryWrapper = new QueryWrapper<>();
-        queryWrapper.like(StringUtils.isNotBlank(address), "address", address)
-                .like(StringUtils.isNotBlank(deviceType), "deviceType", deviceType)
-                .eq(ObjectUtils.isNotEmpty(status), "status", status);
-        queryWrapper.orderBy(StringUtils.isNotBlank(sortField),
-                sortOrder.equals(CommonConstant.SORT_ORDER_ASC), sortField);
+        queryWrapper.like(StringUtils.isNotBlank(address), "address", address).like(StringUtils.isNotBlank(deviceType), "deviceType", deviceType).eq(ObjectUtils.isNotEmpty(status), "status", status);
+        queryWrapper.orderBy(StringUtils.isNotBlank(sortField), sortOrder.equals(CommonConstant.SORT_ORDER_ASC), sortField);
         Page<ClockInInfo> clockInInfoPage = clockInInfoService.page(new Page<>(current, size), queryWrapper);
         return ResultUtils.success(clockInInfoPage);
     }
