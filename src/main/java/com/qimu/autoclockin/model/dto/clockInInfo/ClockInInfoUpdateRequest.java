@@ -12,7 +12,14 @@ import java.io.Serializable;
  */
 @Data
 public class ClockInInfoUpdateRequest implements Serializable {
-
+    /**
+     * 打卡账号
+     */
+    private String clockInAccount;
+    /**
+     * 打卡密码
+     */
+    private String clockPassword;
     /**
      * id
      */

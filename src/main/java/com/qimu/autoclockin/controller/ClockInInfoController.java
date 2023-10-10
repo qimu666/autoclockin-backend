@@ -16,7 +16,9 @@ import com.qimu.autoclockin.model.dto.clockInInfo.ClockInInfoUpdateRequest;
 import com.qimu.autoclockin.model.entity.ClockInInfo;
 import com.qimu.autoclockin.model.entity.User;
 import com.qimu.autoclockin.model.enums.ClockInStatusEnum;
-import com.qimu.autoclockin.model.vo.UserVO;
+import com.qimu.autoclockin.model.vo.ClockInInfoVo;
+import com.qimu.autoclockin.model.vo.LoginResult;
+import com.qimu.autoclockin.model.vo.LoginResultVO;
 import com.qimu.autoclockin.service.ClockInInfoService;
 import com.qimu.autoclockin.service.UserService;
 import lombok.extern.slf4j.Slf4j;
@@ -33,6 +35,7 @@ import java.util.concurrent.TimeUnit;
 
 import static com.qimu.autoclockin.constant.ClockInConstant.SIGN_USER_GROUP;
 import static com.qimu.autoclockin.job.ClockInJob.getObtainClockInTime;
+import static com.qimu.autoclockin.utils.AutoSignUtils.login;
 
 /**
  * 打卡信息接口
@@ -71,6 +74,20 @@ public class ClockInInfoController {
         clockInInfoService.validClockInInfo(clockInInfo, true);
         User loginUser = userService.getLoginUser(request);
         clockInInfo.setUserId(loginUser.getId());
+        ClockInInfoVo clockInInfoVo = new ClockInInfoVo();
+        BeanUtils.copyProperties(clockInInfoAddRequest, clockInInfoVo);
+        try {
+            LoginResultVO loginResultVO = login(clockInInfoVo);
+            LoginResult loginResult = loginResultVO.getLoginResult();
+            if (ObjectUtils.anyNull(loginResult, loginResultVO)) {
+                throw new BusinessException(ErrorCode.OPERATION_ERROR, "账号测试失败：" + loginResult.getMsg());
+            }
+            if (ObjectUtils.isNotEmpty(loginResult) && loginResult.getCode() != 1001) {
+                throw new BusinessException(ErrorCode.OPERATION_ERROR, "账号测试失败：" + loginResult.getMsg());
+            }
+        } catch (InterruptedException e) {
+            throw new BusinessException(ErrorCode.OPERATION_ERROR, e.getMessage());
+        }
         boolean result = clockInInfoService.save(clockInInfo);
         if (!result) {
             throw new BusinessException(ErrorCode.OPERATION_ERROR);
@@ -132,6 +149,20 @@ public class ClockInInfoController {
         // 仅本人或管理员可修改
         if (!userService.isAdmin(request) && !oldClockInInfo.getUserId().equals(user.getId())) {
             throw new BusinessException(ErrorCode.NO_AUTH_ERROR);
+        }
+        ClockInInfoVo clockInInfoVo = new ClockInInfoVo();
+        BeanUtils.copyProperties(clockInInfoUpdateRequest, clockInInfoVo);
+        try {
+            LoginResultVO loginResultVO = login(clockInInfoVo);
+            LoginResult loginResult = loginResultVO.getLoginResult();
+            if (ObjectUtils.anyNull(loginResult, loginResultVO)) {
+                throw new BusinessException(ErrorCode.OPERATION_ERROR, "账号测试失败：" + loginResult.getMsg());
+            }
+            if (ObjectUtils.isNotEmpty(loginResult) && loginResult.getCode() != 1001) {
+                throw new BusinessException(ErrorCode.OPERATION_ERROR, "账号测试失败：" + loginResult.getMsg());
+            }
+        } catch (InterruptedException e) {
+            throw new BusinessException(ErrorCode.OPERATION_ERROR, e.getMessage());
         }
         boolean result = clockInInfoService.updateById(clockInInfo);
         if (oldClockInInfo.getStatus().equals(ClockInStatusEnum.STARTING.getValue())) {

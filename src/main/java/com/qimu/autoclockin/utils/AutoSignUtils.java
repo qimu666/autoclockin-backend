@@ -64,8 +64,8 @@ public class AutoSignUtils {
         TokenResponse tokenResult = JSONUtil.toBean(getToken(clockInInfoVo), TokenResponse.class);
         if (Objects.nonNull(tokenResult) && tokenResult.getCode() == 1001) {
             LoginData loginData = new LoginData();
-            loginData.setPassword(clockInInfoVo.getUserPassword());
-            loginData.setPhone(clockInInfoVo.getUserAccount());
+            loginData.setPassword(clockInInfoVo.getClockPassword());
+            loginData.setPhone(clockInInfoVo.getClockInAccount());
             loginData.setDtype(6);
             loginData.setDToken(clockInInfoVo.getDeviceId());
             HEADERS.put("Sign", MD5.create().digestHex(JSONUtil.toJsonStr(loginData) + tokenResult.getData().getToken()));
@@ -81,7 +81,7 @@ public class AutoSignUtils {
             throw new BusinessException(ErrorCode.OPERATION_ERROR, tokenResult.getMsg());
         } else {
             log.error("login token获取异常！");
-            throw new BusinessException(ErrorCode.OPERATION_ERROR,"token获取异常");
+            throw new BusinessException(ErrorCode.OPERATION_ERROR, "token获取异常");
         }
     }
 
@@ -118,7 +118,7 @@ public class AutoSignUtils {
                 throw new BusinessException(ErrorCode.OPERATION_ERROR, loginResponse.getMsg());
             } else {
                 log.error("sign 打卡异常");
-                throw new BusinessException(ErrorCode.OPERATION_ERROR,"打卡异常");
+                throw new BusinessException(ErrorCode.OPERATION_ERROR, "打卡异常");
             }
         } else if (ObjectUtils.isNotEmpty(loginResult) && loginResult.getCode() != 1001) {
             log.error("sign {} ", loginResult.getMsg());

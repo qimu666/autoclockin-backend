@@ -29,13 +29,13 @@ public class ClockInInfoVo implements Serializable {
     private String deviceId;
 
     /**
-     * 用户帐户
+     * 打卡账号
      */
-    private String userAccount;
+    private String clockInAccount;
     /**
-     * 密码
+     * 打卡密码
      */
-    private String userPassword;
+    private String clockPassword;
     /**
      * 经度
      */
