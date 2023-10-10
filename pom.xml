@@ -10,9 +10,9 @@
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
     <groupId>com.qimu</groupId>
-    <artifactId>easy-sign-in-backend</artifactId>
+    <artifactId>autoclockin-backend</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>easy-sign-in-backend</name>
+    <name>autoclockin-backend</name>
     <description>职校家园一键打卡,后续会有日报、周报、月报上线</description>
     <properties>
         <java.version>1.8</java.version>
