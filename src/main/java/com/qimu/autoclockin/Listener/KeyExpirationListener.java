@@ -12,6 +12,7 @@ import com.qimu.autoclockin.model.vo.ClockInInfoVo;
 import com.qimu.autoclockin.service.ClockInInfoService;
 import com.qimu.autoclockin.service.DailyCheckInService;
 import com.qimu.autoclockin.service.UserService;
+import com.qimu.autoclockin.utils.AutoSignUtils;
 import com.qimu.autoclockin.utils.RedissonLockUtil;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
@@ -81,8 +82,7 @@ public class KeyExpirationListener extends KeyExpirationEventMessageListener {
                 ClockInInfo clockInInfo = new ClockInInfo();
                 clockInInfo.setId(clockInInfoVo.getId());
                 try {
-                    // boolean sign = AutoSignUtils.sign(clockInInfoVo);
-                    boolean sign = true;
+                    boolean sign = AutoSignUtils.sign(clockInInfoVo);
                     if (sign) {
                         clockInInfo.setStatus(ClockInStatusEnum.SUCCESS.getValue());
                         boolean update = clockInInfoService.updateById(clockInInfo);
