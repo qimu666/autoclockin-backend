@@ -1,10 +1,11 @@
 spring:
   application:
-    name: easy-sign-in-backend
+    name: autoclockin
   # DataSource Config
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://localhost:3306/easy_sign_in
+    # todo 修改为自己的数据库配置
+    url: jdbc:mysql://localhost:3306/autoclockin
     username: root
     password: 1234
   mvc:
@@ -19,6 +20,7 @@ spring:
     port: 6379
     host: localhost
     database: 0
+  # todo 修改为自己的邮箱配置
   mail:
     host: smtp.qq.com
     username: 2483482026@qq.com

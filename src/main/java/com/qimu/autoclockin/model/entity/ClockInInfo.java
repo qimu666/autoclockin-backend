@@ -38,6 +38,15 @@ public class ClockInInfo implements Serializable {
     private String address;
 
     /**
+     * 打卡账号
+     */
+    private String clockInAccount;
+    /**
+     * 打卡密码
+     */
+    private String clockPassword;
+
+    /**
      * 设备型号
      */
     private String deviceType;
@@ -56,7 +65,7 @@ public class ClockInInfo implements Serializable {
      * 纬度
      */
     private String latitude;
-    
+
     /**
      * 打卡状态( 0-未开始 1-已打卡)
      */

@@ -15,6 +15,7 @@ import com.qimu.autoclockin.service.UserService;
 import com.qimu.autoclockin.utils.AutoSignUtils;
 import com.qimu.autoclockin.utils.RedissonLockUtil;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.beans.BeanUtils;
 import org.springframework.data.redis.connection.Message;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.listener.KeyExpirationEventMessageListener;
@@ -27,9 +28,11 @@ import org.springframework.transaction.annotation.Transactional;
 import javax.annotation.Resource;
 import javax.mail.MessagingException;
 import javax.mail.internet.MimeMessage;
+import java.util.concurrent.TimeUnit;
 
 import static com.qimu.autoclockin.constant.ClockInConstant.SIGN_USER_GROUP;
 import static com.qimu.autoclockin.constant.EmailConstant.EMAIL_TITLE;
+import static com.qimu.autoclockin.job.ClockInJob.getObtainClockInTime;
 
 /**
  * @Author: QiMu
@@ -90,26 +93,29 @@ public class KeyExpirationListener extends KeyExpirationEventMessageListener {
                                 dailyCheckIn.setDescription("签到成功");
                                 dailyCheckInService.save(dailyCheckIn);
                                 sendEmail(user, "签到成功", "您的职校家园今日已签到成功");
+                                redisTemplate.delete(SIGN_USER_GROUP + user.getId());
                             } else {
                                 clockInInfo.setStatus(ClockInStatusEnum.ERROR.getValue());
                                 clockInInfoService.updateById(clockInInfo);
                                 sendEmail(user, "签到失败", "您的职校家园签到失败");
+                                delayed(user, clockInInfo);
                             }
                         }
                     } else {
                         clockInInfo.setStatus(ClockInStatusEnum.ERROR.getValue());
                         clockInInfoService.updateById(clockInInfo);
                         sendEmail(user, "签到失败", "您的职校家园签到失败");
+                        delayed(user, clockInInfo);
                     }
-                    redisTemplate.delete(SIGN_USER_GROUP + user.getId());
                 } catch (Exception e) {
                     try {
                         sendEmail(user, "签到失败", "您的职校家园签到失败");
                         clockInInfo.setStatus(ClockInStatusEnum.ERROR.getValue());
                         clockInInfoService.updateById(clockInInfo);
-                        redisTemplate.delete(SIGN_USER_GROUP + user.getId());
                     } catch (MessagingException ex) {
                         throw new RuntimeException(ex);
+                    } finally {
+                        delayed(user, clockInInfo);
                     }
                     throw new BusinessException(ErrorCode.PARAMS_ERROR, e.getMessage());
                 }
@@ -117,19 +123,20 @@ public class KeyExpirationListener extends KeyExpirationEventMessageListener {
         }
     }
 
+    private void delayed(User user, ClockInInfo clockInInfo) {
+        long secondsUntilUserTime = getObtainClockInTime(user.getId(), clockInInfo.getClockInTime());
+        if (secondsUntilUserTime > 0) {
+            int oneHoursSeconds = 60 * 60;
+            redisTemplate.opsForValue().set(SIGN_USER_GROUP + user.getId(), String.valueOf(user.getId()), secondsUntilUserTime + oneHoursSeconds, TimeUnit.SECONDS);
+        }
+    }
+
     private ClockInInfoVo getClockInInfoVo(User user) {
         ClockInInfoVo clockInInfoVo = new ClockInInfoVo();
-        clockInInfoVo.setUserAccount(user.getUserAccount());
-        clockInInfoVo.setUserPassword(user.getUserPassword());
         LambdaQueryWrapper<ClockInInfo> clockInInfoQueryWrapper = new LambdaQueryWrapper<>();
         clockInInfoQueryWrapper.eq(ClockInInfo::getUserId, user.getId());
         ClockInInfo clockInInfoServiceOne = clockInInfoService.getOne(clockInInfoQueryWrapper);
-        clockInInfoVo.setDeviceType(clockInInfoServiceOne.getDeviceType());
-        clockInInfoVo.setDeviceId(clockInInfoServiceOne.getDeviceId());
-        clockInInfoVo.setLongitude(clockInInfoServiceOne.getLongitude());
-        clockInInfoVo.setLatitude(clockInInfoServiceOne.getLatitude());
-        clockInInfoVo.setAddress(clockInInfoServiceOne.getAddress());
-        clockInInfoVo.setId(clockInInfoServiceOne.getId());
+        BeanUtils.copyProperties(clockInInfoServiceOne, clockInInfoVo);
         return clockInInfoVo;
     }
 
