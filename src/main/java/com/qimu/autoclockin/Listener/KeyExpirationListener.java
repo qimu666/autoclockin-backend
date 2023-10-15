@@ -9,6 +9,7 @@ import com.qimu.autoclockin.model.entity.DailyCheckIn;
 import com.qimu.autoclockin.model.entity.User;
 import com.qimu.autoclockin.model.enums.ClockInStatusEnum;
 import com.qimu.autoclockin.model.vo.ClockInInfoVo;
+import com.qimu.autoclockin.model.vo.ClockInStatus;
 import com.qimu.autoclockin.service.ClockInInfoService;
 import com.qimu.autoclockin.service.DailyCheckInService;
 import com.qimu.autoclockin.service.UserService;
@@ -74,7 +75,8 @@ public class KeyExpirationListener extends KeyExpirationEventMessageListener {
                 }
                 LambdaQueryWrapper<DailyCheckIn> checkInLambdaQueryWrapper = new LambdaQueryWrapper<>();
                 checkInLambdaQueryWrapper.eq(DailyCheckIn::getUserId, user.getId());
-                long count = dailyCheckInService.count();
+                checkInLambdaQueryWrapper.eq(DailyCheckIn::getStatus, 1);
+                long count = dailyCheckInService.count(checkInLambdaQueryWrapper);
                 if (count > 0) {
                     throw new BusinessException(ErrorCode.OPERATION_ERROR, "今日已签到");
                 }
@@ -82,36 +84,48 @@ public class KeyExpirationListener extends KeyExpirationEventMessageListener {
                 ClockInInfo clockInInfo = new ClockInInfo();
                 clockInInfo.setId(clockInInfoVo.getId());
                 try {
-                    boolean sign = AutoSignUtils.sign(clockInInfoVo);
-                    if (sign) {
+                    ClockInStatus sign = AutoSignUtils.sign(clockInInfoVo);
+                    if (sign.getStatus() || (StringUtils.isNotBlank(sign.getMessage()) && sign.getMessage().contains("已打卡"))) {
                         clockInInfo.setStatus(ClockInStatusEnum.SUCCESS.getValue());
-                        boolean update = clockInInfoService.updateById(clockInInfo);
-                        if (StringUtils.isNotBlank(user.getEmail())) {
-                            if (update) {
-                                DailyCheckIn dailyCheckIn = new DailyCheckIn();
-                                dailyCheckIn.setUserId(user.getId());
-                                dailyCheckIn.setDescription("签到成功");
-                                dailyCheckInService.save(dailyCheckIn);
-                                sendEmail(user, "签到成功", "您的职校家园今日已签到成功");
-                                redisTemplate.delete(SIGN_USER_GROUP + user.getId());
-                            } else {
-                                clockInInfo.setStatus(ClockInStatusEnum.ERROR.getValue());
-                                clockInInfoService.updateById(clockInInfo);
-                                sendEmail(user, "签到失败", "您的职校家园签到失败");
-                                delayed(user, clockInInfo);
-                            }
-                        }
+                        saveDailyCheckInInfo(user, clockInInfo, sign.getMessage());
                     } else {
+                        LambdaQueryWrapper<DailyCheckIn> dailyCheckInLambdaQueryWrapper = new LambdaQueryWrapper<>();
+                        dailyCheckInLambdaQueryWrapper.eq(DailyCheckIn::getUserId, user.getId());
+                        DailyCheckIn checkInServiceOne = dailyCheckInService.getOne(dailyCheckInLambdaQueryWrapper);
                         clockInInfo.setStatus(ClockInStatusEnum.ERROR.getValue());
+
+                        DailyCheckIn dailyCheckIn = new DailyCheckIn();
+                        if (StringUtils.isNotBlank(sign.getMessage()) && sign.getMessage().contains("已打卡")) {
+                            clockInInfo.setStatus(ClockInStatusEnum.SUCCESS.getValue());
+                            dailyCheckIn.setStatus(1);
+                        }
                         clockInInfoService.updateById(clockInInfo);
-                        sendEmail(user, "签到失败", "您的职校家园签到失败");
-                        delayed(user, clockInInfo);
+                        dailyCheckIn.setDescription(sign.getMessage());
+                        if (checkInServiceOne == null) {
+                            dailyCheckInService.save(dailyCheckIn);
+                        } else {
+                            dailyCheckIn.setId(checkInServiceOne.getId());
+                            dailyCheckInService.updateById(dailyCheckIn);
+                        }
+                        sendEmail(user, "签到失败", sign.getMessage());
                     }
                 } catch (Exception e) {
                     try {
-                        sendEmail(user, "签到失败", "您的职校家园签到失败");
+                        LambdaQueryWrapper<DailyCheckIn> dailyCheckInLambdaQueryWrapper = new LambdaQueryWrapper<>();
+                        dailyCheckInLambdaQueryWrapper.eq(DailyCheckIn::getUserId, user.getId());
+                        DailyCheckIn checkInServiceOne = dailyCheckInService.getOne(dailyCheckInLambdaQueryWrapper);
+                        sendEmail(user, "签到失败", e.getMessage());
                         clockInInfo.setStatus(ClockInStatusEnum.ERROR.getValue());
                         clockInInfoService.updateById(clockInInfo);
+                        DailyCheckIn dailyCheckIn = new DailyCheckIn();
+                        dailyCheckIn.setDescription(e.getMessage());
+                        dailyCheckIn.setStatus(0);
+                        if (checkInServiceOne == null) {
+                            dailyCheckInService.save(dailyCheckIn);
+                        } else {
+                            dailyCheckIn.setId(checkInServiceOne.getId());
+                            dailyCheckInService.updateById(dailyCheckIn);
+                        }
                     } catch (MessagingException ex) {
                         throw new RuntimeException(ex);
                     } finally {
@@ -120,6 +134,44 @@ public class KeyExpirationListener extends KeyExpirationEventMessageListener {
                     throw new BusinessException(ErrorCode.PARAMS_ERROR, e.getMessage());
                 }
             });
+        }
+    }
+
+    /**
+     * 保存每日入住信息
+     *
+     * @param user        使用者
+     * @param clockInInfo 打卡信息
+     * @param message     消息
+     * @throws MessagingException 消息传递异常
+     */
+    private void saveDailyCheckInInfo(User user, ClockInInfo clockInInfo, String message) throws MessagingException {
+        boolean update = clockInInfoService.updateById(clockInInfo);
+        LambdaQueryWrapper<DailyCheckIn> checkInLambdaQueryWrapper = new LambdaQueryWrapper<>();
+        checkInLambdaQueryWrapper.eq(DailyCheckIn::getUserId, user.getId());
+        DailyCheckIn checkInServiceOne = dailyCheckInService.getOne(checkInLambdaQueryWrapper);
+        DailyCheckIn dailyCheckIn = new DailyCheckIn();
+        dailyCheckIn.setDescription(message);
+        if (StringUtils.isNotBlank(user.getEmail())) {
+            if (update) {
+                // 打卡成功
+                dailyCheckIn.setStatus(1);
+                sendEmail(user, "签到成功", message);
+                redisTemplate.delete(SIGN_USER_GROUP + user.getId());
+            } else {
+                // 打卡失败
+                dailyCheckIn.setStatus(0);
+                clockInInfo.setStatus(ClockInStatusEnum.ERROR.getValue());
+                clockInInfoService.updateById(clockInInfo);
+                sendEmail(user, "签到失败", message);
+                delayed(user, clockInInfo);
+            }
+        }
+        if (checkInServiceOne == null) {
+            dailyCheckInService.save(dailyCheckIn);
+        } else {
+            dailyCheckIn.setId(checkInServiceOne.getId());
+            dailyCheckInService.updateById(dailyCheckIn);
         }
     }
 

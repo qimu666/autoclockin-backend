@@ -4,9 +4,10 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import lombok.Data;
+
 import java.io.Serializable;
 import java.util.Date;
-import lombok.Data;
 
 /**
  * @Author: QiMu
@@ -14,7 +15,7 @@ import lombok.Data;
  * @Version: 1.0
  * @Description: 每日签到表
  */
-@TableName(value ="daily_check_in")
+@TableName(value = "daily_check_in")
 @Data
 public class DailyCheckIn implements Serializable {
     /**
@@ -22,7 +23,10 @@ public class DailyCheckIn implements Serializable {
      */
     @TableId(type = IdType.AUTO)
     private Long id;
-
+    /**
+     * 打卡状态( 0-打卡失败 1-已打卡)
+     */
+    private Integer status;
     /**
      * 签到人
      */
