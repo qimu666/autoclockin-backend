@@ -15,17 +15,30 @@ public interface RequestAddressConstant {
     /**
      * 标记url
      */
-    String TOKEN_URL = "http://sxbaapp.zcj.jyt.henan.gov.cn/interface/token.ashx";
+    String TOKEN_URL = "https://sxbaapp.vae.ha.cn/interface/token.ashx";
 
+    /**
+     * 密钥
+     */
+    String SECRET_KEY = "Anything_2023";
+    /**
+     * 成功code
+     */
+    int SUCCESS_CODE = 1001;
+    /**
+     * 数据类型
+     */
+    int DTYPE = 6;
     /**
      * 登录网址
      */
-    String LOGIN_URL = "http://sxbaapp.zcj.jyt.henan.gov.cn/interface/relog.ashx";
+    String LOGIN_URL = "http://sxbaapp.vae.ha.cn/interface/relog.ashx";
+
 
     /**
      * 标志url
      */
-    String SIGN_URL = "http://sxbaapp.zcj.jyt.henan.gov.cn/interface/clockindaily20220827.ashx";
+    String SIGN_URL = "http://sxbaapp.vae.ha.cn/interface/clockindaily20220827.ashx";
 
     /**
      * 报告界面

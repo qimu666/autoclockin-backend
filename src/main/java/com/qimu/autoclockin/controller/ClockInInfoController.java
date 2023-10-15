@@ -14,12 +14,14 @@ import com.qimu.autoclockin.model.dto.clockInInfo.ClockInInfoAddRequest;
 import com.qimu.autoclockin.model.dto.clockInInfo.ClockInInfoQueryRequest;
 import com.qimu.autoclockin.model.dto.clockInInfo.ClockInInfoUpdateRequest;
 import com.qimu.autoclockin.model.entity.ClockInInfo;
+import com.qimu.autoclockin.model.entity.DailyCheckIn;
 import com.qimu.autoclockin.model.entity.User;
 import com.qimu.autoclockin.model.enums.ClockInStatusEnum;
 import com.qimu.autoclockin.model.vo.ClockInInfoVo;
 import com.qimu.autoclockin.model.vo.LoginResult;
 import com.qimu.autoclockin.model.vo.LoginResultVO;
 import com.qimu.autoclockin.service.ClockInInfoService;
+import com.qimu.autoclockin.service.DailyCheckInService;
 import com.qimu.autoclockin.service.UserService;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ObjectUtils;
@@ -53,6 +55,8 @@ public class ClockInInfoController {
     private RedisTemplate<String, String> redisTemplate;
     @Resource
     private UserService userService;
+    @Resource
+    private DailyCheckInService dailyCheckInService;
 
     // region 增删改查
 
@@ -152,18 +156,18 @@ public class ClockInInfoController {
         }
         ClockInInfoVo clockInInfoVo = new ClockInInfoVo();
         BeanUtils.copyProperties(clockInInfoUpdateRequest, clockInInfoVo);
-        try {
-            LoginResultVO loginResultVO = login(clockInInfoVo);
-            LoginResult loginResult = loginResultVO.getLoginResult();
-            if (ObjectUtils.anyNull(loginResult, loginResultVO)) {
-                throw new BusinessException(ErrorCode.OPERATION_ERROR, "账号测试失败：" + loginResult.getMsg());
-            }
-            if (ObjectUtils.isNotEmpty(loginResult) && loginResult.getCode() != 1001) {
-                throw new BusinessException(ErrorCode.OPERATION_ERROR, "账号测试失败：" + loginResult.getMsg());
-            }
-        } catch (InterruptedException e) {
-            throw new BusinessException(ErrorCode.OPERATION_ERROR, e.getMessage());
-        }
+        // try {
+        //     LoginResultVO loginResultVO = login(clockInInfoVo);
+        //     LoginResult loginResult = loginResultVO.getLoginResult();
+        //     if (ObjectUtils.anyNull(loginResult, loginResultVO)) {
+        //         throw new BusinessException(ErrorCode.OPERATION_ERROR, "账号测试失败：" + loginResult.getMsg());
+        //     }
+        //     if (ObjectUtils.isNotEmpty(loginResult) && loginResult.getCode() != 1001) {
+        //         throw new BusinessException(ErrorCode.OPERATION_ERROR, "账号测试失败：" + loginResult.getMsg());
+        //     }
+        // } catch (InterruptedException e) {
+        //     throw new BusinessException(ErrorCode.OPERATION_ERROR, e.getMessage());
+        // }
         boolean result = clockInInfoService.updateById(clockInInfo);
         if (oldClockInInfo.getStatus().equals(ClockInStatusEnum.STARTING.getValue())) {
             long secondsUntilUserTime = getObtainClockInTime(user.getId(), clockInInfoUpdateRequest.getClockInTime());
@@ -192,19 +196,25 @@ public class ClockInInfoController {
 
 
     /**
-     * 让时钟信息登录用户id
+     * 通过登录用户id获取打卡信息
      * 根据 id 获取
      *
      * @param request 请求
-     * @return {@link BaseResponse}<{@link ClockInInfo}>
+     * @return {@link BaseResponse}<{@link ClockInInfoVo}>
      */
     @GetMapping("/login/get")
-    public BaseResponse<ClockInInfo> getClockInInfoByLoginUserId(HttpServletRequest request) {
+    public BaseResponse<ClockInInfoVo> getClockInInfoByLoginUserId(HttpServletRequest request) {
         User loginUser = userService.getLoginUser(request);
         LambdaQueryWrapper<ClockInInfo> clockInInfoQueryWrapper = new LambdaQueryWrapper<>();
         clockInInfoQueryWrapper.eq(ClockInInfo::getUserId, loginUser.getId());
         ClockInInfo clockInInfoServiceOne = clockInInfoService.getOne(clockInInfoQueryWrapper);
-        return ResultUtils.success(clockInInfoServiceOne);
+        ClockInInfoVo clockInInfoVo = new ClockInInfoVo();
+        BeanUtils.copyProperties(clockInInfoServiceOne,clockInInfoVo);
+        LambdaQueryWrapper<DailyCheckIn> dailyCheckInLambdaQueryWrapper = new LambdaQueryWrapper<>();
+        dailyCheckInLambdaQueryWrapper.eq(DailyCheckIn::getUserId, clockInInfoServiceOne.getUserId());
+        DailyCheckIn checkInServiceOne = dailyCheckInService.getOne(dailyCheckInLambdaQueryWrapper);
+        clockInInfoVo.setDescription(checkInServiceOne.getDescription());
+        return ResultUtils.success(clockInInfoVo);
     }
 
     /**
