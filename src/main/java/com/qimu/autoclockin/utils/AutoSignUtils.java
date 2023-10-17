@@ -10,6 +10,14 @@ import com.qimu.autoclockin.exception.BusinessException;
 import com.qimu.autoclockin.model.vo.*;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ObjectUtils;
+import org.apache.http.HttpEntity;
+import org.apache.http.HttpResponse;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.entity.ContentType;
+import org.apache.http.entity.StringEntity;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClientBuilder;
+import org.apache.http.util.EntityUtils;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -41,15 +49,20 @@ public class AutoSignUtils {
      *
      * @return {@link String}
      */
-    private static String getToken() {
-        // 添加token请求体
-        Map<String, String> tokenHeaders = new HashMap<>();
-        tokenHeaders.put("content-type", "application/json;charset=UTF-8");
-        String body = HttpRequest.post(TOKEN_URL)
-                .addHeaders(tokenHeaders)
-                .execute().body();
-        log.info("=== AutoSignUtils getToken body :{} ===", body);
-        return body;
+    private static String getToken() throws Exception {
+        try (CloseableHttpClient httpClient = HttpClientBuilder.create().build()) {
+            HttpPost httpPost = new HttpPost(TOKEN_URL);
+            httpPost.setHeader("content-type", "application/json;charset=UTF-8");
+            StringEntity requestEntity = new StringEntity("", ContentType.APPLICATION_JSON);
+            httpPost.setEntity(requestEntity);
+            HttpResponse response = httpClient.execute(httpPost);
+            HttpEntity responseEntity = response.getEntity();
+            String responseBody = EntityUtils.toString(responseEntity);
+            EntityUtils.consume(responseEntity);
+            return responseBody;
+        } catch (Exception e) {
+            throw new BusinessException(ErrorCode.OPERATION_ERROR);
+        }
     }
 
     /**
@@ -74,7 +87,7 @@ public class AutoSignUtils {
      * @return {@link LoginResultVO}
      * @throws InterruptedException 中断异常
      */
-    public static LoginResultVO login(ClockInInfoVo clockInInfoVo) throws InterruptedException {
+    public static LoginResultVO login(ClockInInfoVo clockInInfoVo) throws Exception {
         // 获取token
         TokenResponse tokenResult = JSONUtil.toBean(JSONUtil.toJsonStr(getToken()), TokenResponse.class);
         if (Objects.nonNull(tokenResult) && tokenResult.getCode() == SUCCESS_CODE) {
@@ -113,7 +126,7 @@ public class AutoSignUtils {
      * @return boolean
      * @throws InterruptedException 中断异常
      */
-    public static ClockInStatus sign(ClockInInfoVo clockInInfoVo) throws InterruptedException {
+    public static ClockInStatus sign(ClockInInfoVo clockInInfoVo) throws Exception {
         // 登录
         LoginResultVO loginResultVO = login(clockInInfoVo);
         LoginResult loginResult = loginResultVO.getLoginResult();

@@ -72,7 +72,8 @@ public class ClockInJob {
             // 已开启自动打卡的用户id
             List<Long> clockInStartingUserIdList = clockInInfoService.list()
                     .stream()
-                    .filter(clockInInfo -> clockInInfo.getStatus().equals(ClockInStatusEnum.STARTING.getValue()))
+                    .filter(clockInInfo ->
+                            !clockInInfo.getStatus().equals(ClockInStatusEnum.PAUSED.getValue()) && !clockInInfo.getStatus().equals(ClockInStatusEnum.ERROR.getValue()))
                     .map(ClockInInfo::getUserId)
                     .collect(Collectors.toList());
             log.info("打卡所有用户id:" + clockInStartingUserIdList);
