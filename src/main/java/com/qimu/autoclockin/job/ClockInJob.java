@@ -49,9 +49,7 @@ public class ClockInJob {
     /**
      * 每日凌晨自动打卡
      */
-    // @Scheduled(cron = "0 0 0 * * *")
-    @Scheduled(fixedDelay = 10000)
-
+    @Scheduled(cron = "0 0 0 * * *")
     public void doAutoClockIn() {
         redissonLockUtil.redissonDistributedLocks("ClockInJob:clearCheckInList", () -> {
             // 每批删除的数据量
