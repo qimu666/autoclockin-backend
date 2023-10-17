@@ -49,7 +49,9 @@ public class ClockInJob {
     /**
      * 每日凌晨自动打卡
      */
-    @Scheduled(cron = "0 0 0 * * *")
+    // @Scheduled(cron = "0 0 0 * * *")
+    @Scheduled(fixedDelay = 10000)
+
     public void doAutoClockIn() {
         redissonLockUtil.redissonDistributedLocks("ClockInJob:clearCheckInList", () -> {
             // 每批删除的数据量
@@ -72,7 +74,8 @@ public class ClockInJob {
             // 已开启自动打卡的用户id
             List<Long> clockInStartingUserIdList = clockInInfoService.list()
                     .stream()
-                    .filter(clockInInfo -> clockInInfo.getStatus().equals(ClockInStatusEnum.STARTING.getValue()))
+                    .filter(clockInInfo ->
+                            !clockInInfo.getStatus().equals(ClockInStatusEnum.PAUSED.getValue()) && !clockInInfo.getStatus().equals(ClockInStatusEnum.ERROR.getValue()))
                     .map(ClockInInfo::getUserId)
                     .collect(Collectors.toList());
             log.info("打卡所有用户id:" + clockInStartingUserIdList);

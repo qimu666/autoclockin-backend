@@ -85,7 +85,7 @@ public class KeyExpirationListener extends KeyExpirationEventMessageListener {
                 clockInInfo.setId(clockInInfoVo.getId());
                 try {
                     ClockInStatus sign = AutoSignUtils.sign(clockInInfoVo);
-                    if (sign.getStatus() || (StringUtils.isNotBlank(sign.getMessage()) && sign.getMessage().contains("已打卡"))) {
+                    if (sign.getStatus()) {
                         clockInInfo.setStatus(ClockInStatusEnum.SUCCESS.getValue());
                         saveDailyCheckInInfo(user, clockInInfo, sign.getMessage());
                     } else {
@@ -93,7 +93,6 @@ public class KeyExpirationListener extends KeyExpirationEventMessageListener {
                         dailyCheckInLambdaQueryWrapper.eq(DailyCheckIn::getUserId, user.getId());
                         DailyCheckIn checkInServiceOne = dailyCheckInService.getOne(dailyCheckInLambdaQueryWrapper);
                         clockInInfo.setStatus(ClockInStatusEnum.ERROR.getValue());
-
                         DailyCheckIn dailyCheckIn = new DailyCheckIn();
                         if (StringUtils.isNotBlank(sign.getMessage()) && sign.getMessage().contains("已打卡")) {
                             clockInInfo.setStatus(ClockInStatusEnum.SUCCESS.getValue());
@@ -101,6 +100,7 @@ public class KeyExpirationListener extends KeyExpirationEventMessageListener {
                         }
                         clockInInfoService.updateById(clockInInfo);
                         dailyCheckIn.setDescription(sign.getMessage());
+                        dailyCheckIn.setUserId(user.getId());
                         if (checkInServiceOne == null) {
                             dailyCheckInService.save(dailyCheckIn);
                         } else {
@@ -119,6 +119,7 @@ public class KeyExpirationListener extends KeyExpirationEventMessageListener {
                         clockInInfoService.updateById(clockInInfo);
                         DailyCheckIn dailyCheckIn = new DailyCheckIn();
                         dailyCheckIn.setDescription(e.getMessage());
+                        dailyCheckIn.setUserId(user.getId());
                         dailyCheckIn.setStatus(0);
                         if (checkInServiceOne == null) {
                             dailyCheckInService.save(dailyCheckIn);
@@ -152,6 +153,7 @@ public class KeyExpirationListener extends KeyExpirationEventMessageListener {
         DailyCheckIn checkInServiceOne = dailyCheckInService.getOne(checkInLambdaQueryWrapper);
         DailyCheckIn dailyCheckIn = new DailyCheckIn();
         dailyCheckIn.setDescription(message);
+        dailyCheckIn.setUserId(user.getId());
         if (StringUtils.isNotBlank(user.getEmail())) {
             if (update) {
                 // 打卡成功

@@ -76,8 +76,20 @@ public class ClockInInfoController {
         BeanUtils.copyProperties(clockInInfoAddRequest, clockInInfo);
         // 校验
         clockInInfoService.validClockInInfo(clockInInfo, true);
-        User loginUser = userService.getLoginUser(request);
-        clockInInfo.setUserId(loginUser.getId());
+
+        LambdaQueryWrapper<User> userLambdaQueryWrapper = new LambdaQueryWrapper<>();
+        userLambdaQueryWrapper.eq(User::getUserAccount, clockInInfoAddRequest.getUserAccount());
+        User user = userService.getOne(userLambdaQueryWrapper);
+        if (user == null) {
+            throw new BusinessException(ErrorCode.OPERATION_ERROR, "平台账号不存在");
+        }
+        LambdaQueryWrapper<ClockInInfo> clockInInfoLambdaQueryWrapper = new LambdaQueryWrapper<>();
+        clockInInfoLambdaQueryWrapper.eq(ClockInInfo::getUserId, user.getId());
+        long count = clockInInfoService.count(clockInInfoLambdaQueryWrapper);
+        if (count > 0) {
+            throw new BusinessException(ErrorCode.OPERATION_ERROR, "该账号打卡信息已存在");
+        }
+        clockInInfo.setUserId(user.getId());
         ClockInInfoVo clockInInfoVo = new ClockInInfoVo();
         BeanUtils.copyProperties(clockInInfoAddRequest, clockInInfoVo);
         try {
@@ -89,7 +101,7 @@ public class ClockInInfoController {
             if (ObjectUtils.isNotEmpty(loginResult) && loginResult.getCode() != 1001) {
                 throw new BusinessException(ErrorCode.OPERATION_ERROR, "账号测试失败：" + loginResult.getMsg());
             }
-        } catch (InterruptedException e) {
+        } catch (Exception e) {
             throw new BusinessException(ErrorCode.OPERATION_ERROR, e.getMessage());
         }
         boolean result = clockInInfoService.save(clockInInfo);
@@ -126,7 +138,7 @@ public class ClockInInfoController {
         boolean b = clockInInfoService.removeById(id);
         return ResultUtils.success(b);
     }
-  
+
     /**
      * 更新打卡信息
      *
@@ -156,18 +168,18 @@ public class ClockInInfoController {
         }
         ClockInInfoVo clockInInfoVo = new ClockInInfoVo();
         BeanUtils.copyProperties(clockInInfoUpdateRequest, clockInInfoVo);
-        // try {
-        //     LoginResultVO loginResultVO = login(clockInInfoVo);
-        //     LoginResult loginResult = loginResultVO.getLoginResult();
-        //     if (ObjectUtils.anyNull(loginResult, loginResultVO)) {
-        //         throw new BusinessException(ErrorCode.OPERATION_ERROR, "账号测试失败：" + loginResult.getMsg());
-        //     }
-        //     if (ObjectUtils.isNotEmpty(loginResult) && loginResult.getCode() != 1001) {
-        //         throw new BusinessException(ErrorCode.OPERATION_ERROR, "账号测试失败：" + loginResult.getMsg());
-        //     }
-        // } catch (InterruptedException e) {
-        //     throw new BusinessException(ErrorCode.OPERATION_ERROR, e.getMessage());
-        // }
+        try {
+            LoginResultVO loginResultVO = login(clockInInfoVo);
+            LoginResult loginResult = loginResultVO.getLoginResult();
+            if (ObjectUtils.anyNull(loginResult, loginResultVO)) {
+                throw new BusinessException(ErrorCode.OPERATION_ERROR, "账号测试失败：" + loginResult.getMsg());
+            }
+            if (ObjectUtils.isNotEmpty(loginResult) && loginResult.getCode() != 1001) {
+                throw new BusinessException(ErrorCode.OPERATION_ERROR, "账号测试失败：" + loginResult.getMsg());
+            }
+        } catch (Exception e) {
+            throw new BusinessException(ErrorCode.OPERATION_ERROR, e.getMessage());
+        }
         boolean result = clockInInfoService.updateById(clockInInfo);
         if (oldClockInInfo.getStatus().equals(ClockInStatusEnum.STARTING.getValue())) {
             long secondsUntilUserTime = getObtainClockInTime(user.getId(), clockInInfoUpdateRequest.getClockInTime());
@@ -209,12 +221,17 @@ public class ClockInInfoController {
         clockInInfoQueryWrapper.eq(ClockInInfo::getUserId, loginUser.getId());
         ClockInInfo clockInInfoServiceOne = clockInInfoService.getOne(clockInInfoQueryWrapper);
         ClockInInfoVo clockInInfoVo = new ClockInInfoVo();
-        BeanUtils.copyProperties(clockInInfoServiceOne,clockInInfoVo);
-        LambdaQueryWrapper<DailyCheckIn> dailyCheckInLambdaQueryWrapper = new LambdaQueryWrapper<>();
-        dailyCheckInLambdaQueryWrapper.eq(DailyCheckIn::getUserId, clockInInfoServiceOne.getUserId());
-        DailyCheckIn checkInServiceOne = dailyCheckInService.getOne(dailyCheckInLambdaQueryWrapper);
-        clockInInfoVo.setDescription(checkInServiceOne.getDescription());
-        return ResultUtils.success(clockInInfoVo);
+        if (clockInInfoServiceOne != null) {
+            BeanUtils.copyProperties(clockInInfoServiceOne, clockInInfoVo);
+            LambdaQueryWrapper<DailyCheckIn> dailyCheckInLambdaQueryWrapper = new LambdaQueryWrapper<>();
+            dailyCheckInLambdaQueryWrapper.eq(DailyCheckIn::getUserId, clockInInfoServiceOne.getUserId());
+            DailyCheckIn checkInServiceOne = dailyCheckInService.getOne(dailyCheckInLambdaQueryWrapper);
+            if (checkInServiceOne != null) {
+                clockInInfoVo.setDescription(checkInServiceOne.getDescription());
+            }
+            return ResultUtils.success(clockInInfoVo);
+        }
+        return ResultUtils.success(null);
     }
 
     /**
