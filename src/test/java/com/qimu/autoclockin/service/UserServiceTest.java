@@ -70,7 +70,7 @@ class UserServiceTest {
             if (ObjectUtils.isNotEmpty(loginResult) && loginResult.getCode() != 1001) {
                 throw new BusinessException(ErrorCode.OPERATION_ERROR, "账号测试失败：" + loginResult.getMsg());
             }
-        } catch (InterruptedException e) {
+        } catch (Exception e) {
             throw new BusinessException(ErrorCode.OPERATION_ERROR, e.getMessage());
         }
     }
