@@ -33,7 +33,6 @@ import java.util.concurrent.TimeUnit;
 
 import static com.qimu.autoclockin.constant.ClockInConstant.SIGN_USER_GROUP;
 import static com.qimu.autoclockin.constant.EmailConstant.EMAIL_TITLE;
-import static com.qimu.autoclockin.job.ClockInJob.getObtainClockInTime;
 
 /**
  * @Author: QiMu
@@ -107,14 +106,22 @@ public class KeyExpirationListener extends KeyExpirationEventMessageListener {
                             dailyCheckIn.setId(checkInServiceOne.getId());
                             dailyCheckInService.updateById(dailyCheckIn);
                         }
-                        sendEmail(user, "签到失败", sign.getMessage());
+                        if (StringUtils.isNotBlank(user.getEmail())) {
+                            sendEmail(user, "签到失败", sign.getMessage());
+                        }
+                        // 已经打卡就不用重试了
+                        if (!sign.getMessage().contains("已打卡")) {
+                            delayed(user.getId());
+                        }
                     }
                 } catch (Exception e) {
                     try {
                         LambdaQueryWrapper<DailyCheckIn> dailyCheckInLambdaQueryWrapper = new LambdaQueryWrapper<>();
                         dailyCheckInLambdaQueryWrapper.eq(DailyCheckIn::getUserId, user.getId());
                         DailyCheckIn checkInServiceOne = dailyCheckInService.getOne(dailyCheckInLambdaQueryWrapper);
-                        sendEmail(user, "签到失败", e.getMessage());
+                        if (StringUtils.isNotBlank(user.getEmail())) {
+                            sendEmail(user, "签到失败", e.getMessage());
+                        }
                         clockInInfo.setStatus(ClockInStatusEnum.ERROR.getValue());
                         clockInInfoService.updateById(clockInInfo);
                         DailyCheckIn dailyCheckIn = new DailyCheckIn();
@@ -130,7 +137,7 @@ public class KeyExpirationListener extends KeyExpirationEventMessageListener {
                     } catch (MessagingException ex) {
                         throw new RuntimeException(ex);
                     } finally {
-                        delayed(user, clockInInfo);
+                        delayed(user.getId());
                     }
                     throw new BusinessException(ErrorCode.PARAMS_ERROR, e.getMessage());
                 }
@@ -154,7 +161,7 @@ public class KeyExpirationListener extends KeyExpirationEventMessageListener {
         DailyCheckIn dailyCheckIn = new DailyCheckIn();
         dailyCheckIn.setDescription(message);
         dailyCheckIn.setUserId(user.getId());
-        if (StringUtils.isNotBlank(user.getEmail())) {
+        if (StringUtils.isNotBlank(user.getEmail().trim())) {
             if (update) {
                 // 打卡成功
                 dailyCheckIn.setStatus(1);
@@ -166,7 +173,7 @@ public class KeyExpirationListener extends KeyExpirationEventMessageListener {
                 clockInInfo.setStatus(ClockInStatusEnum.ERROR.getValue());
                 clockInInfoService.updateById(clockInInfo);
                 sendEmail(user, "签到失败", message);
-                delayed(user, clockInInfo);
+                delayed(user.getId());
             }
         }
         if (checkInServiceOne == null) {
@@ -177,12 +184,13 @@ public class KeyExpirationListener extends KeyExpirationEventMessageListener {
         }
     }
 
-    private void delayed(User user, ClockInInfo clockInInfo) {
-        long secondsUntilUserTime = getObtainClockInTime(user.getId(), clockInInfo.getClockInTime());
-        if (secondsUntilUserTime > 0) {
-            int oneHoursSeconds = 60 * 60;
-            redisTemplate.opsForValue().set(SIGN_USER_GROUP + user.getId(), String.valueOf(user.getId()), secondsUntilUserTime + oneHoursSeconds, TimeUnit.SECONDS);
-        }
+    /**
+     * 打卡失败15分钟后重试
+     *
+     * @param id id
+     */
+    private void delayed(Long id) {
+        redisTemplate.opsForValue().set(SIGN_USER_GROUP + id, String.valueOf(id), 15, TimeUnit.MINUTES);
     }
 
     private ClockInInfoVo getClockInInfoVo(User user) {
