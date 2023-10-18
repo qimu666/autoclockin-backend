@@ -195,21 +195,20 @@ public class ClockInInfoController {
      * 通过id获取打卡信息
      *
      * @param id id
-     * @return {@link BaseResponse}<{@link ClockInInfo}>
+     * @return {@link BaseResponse}<{@link ClockInInfoVo}>
      */
     @GetMapping("/get")
-    public BaseResponse<ClockInInfo> getClockInInfoById(long id) {
-        if (id <= 0) {
+    public BaseResponse<ClockInInfoVo> getClockInInfoById(String id) {
+        if (StringUtils.isBlank(id)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
         ClockInInfo clockInInfo = clockInInfoService.getById(id);
-        return ResultUtils.success(clockInInfo);
+        return ResultUtils.success(getClockInInfoVo(clockInInfo));
     }
 
 
     /**
      * 通过登录用户id获取打卡信息
-     * 根据 id 获取
      *
      * @param request 请求
      * @return {@link BaseResponse}<{@link ClockInInfoVo}>
@@ -220,18 +219,23 @@ public class ClockInInfoController {
         LambdaQueryWrapper<ClockInInfo> clockInInfoQueryWrapper = new LambdaQueryWrapper<>();
         clockInInfoQueryWrapper.eq(ClockInInfo::getUserId, loginUser.getId());
         ClockInInfo clockInInfoServiceOne = clockInInfoService.getOne(clockInInfoQueryWrapper);
+        ClockInInfoVo clockInInfoVo = getClockInInfoVo(clockInInfoServiceOne);
+        return ResultUtils.success(clockInInfoVo);
+    }
+
+    private ClockInInfoVo getClockInInfoVo(ClockInInfo clockInInfo) {
         ClockInInfoVo clockInInfoVo = new ClockInInfoVo();
-        if (clockInInfoServiceOne != null) {
-            BeanUtils.copyProperties(clockInInfoServiceOne, clockInInfoVo);
+        if (clockInInfo != null) {
+            BeanUtils.copyProperties(clockInInfo, clockInInfoVo);
             LambdaQueryWrapper<DailyCheckIn> dailyCheckInLambdaQueryWrapper = new LambdaQueryWrapper<>();
-            dailyCheckInLambdaQueryWrapper.eq(DailyCheckIn::getUserId, clockInInfoServiceOne.getUserId());
+            dailyCheckInLambdaQueryWrapper.eq(DailyCheckIn::getUserId, clockInInfo.getUserId());
             DailyCheckIn checkInServiceOne = dailyCheckInService.getOne(dailyCheckInLambdaQueryWrapper);
             if (checkInServiceOne != null) {
                 clockInInfoVo.setDescription(checkInServiceOne.getDescription());
             }
-            return ResultUtils.success(clockInInfoVo);
+            return clockInInfoVo;
         }
-        return ResultUtils.success(null);
+        return null;
     }
 
     /**
@@ -260,6 +264,7 @@ public class ClockInInfoController {
      * @return {@link BaseResponse}<{@link Page}<{@link ClockInInfo}>>
      */
     @GetMapping("/list/page")
+    @AuthCheck(mustRole = "admin")
     public BaseResponse<Page<ClockInInfo>> listClockInInfoByPage(ClockInInfoQueryRequest clockInInfoQueryRequest, HttpServletRequest request) {
         if (clockInInfoQueryRequest == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);

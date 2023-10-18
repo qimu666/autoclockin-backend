@@ -12,6 +12,7 @@ import com.qimu.autoclockin.service.UserService;
 import com.qimu.autoclockin.utils.RedissonLockUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.beans.BeanUtils;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -20,6 +21,7 @@ import javax.annotation.Resource;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -69,14 +71,32 @@ public class ClockInJob {
                     dailyCheckInService.removeByIds(dataList.stream().map(DailyCheckIn::getId).collect(Collectors.toList()));
                 }
             }
+            // 每天已经打卡的用户
+            List<ClockInInfo> successClockInInfo = new ArrayList<>();
+
             // 已开启自动打卡的用户id
             List<Long> clockInStartingUserIdList = clockInInfoService.list()
                     .stream()
-                    .filter(clockInInfo ->
-                            !clockInInfo.getStatus().equals(ClockInStatusEnum.PAUSED.getValue()) && !clockInInfo.getStatus().equals(ClockInStatusEnum.ERROR.getValue()))
+                    .filter(clockInInfo -> {
+                        if (!clockInInfo.getStatus().equals(ClockInStatusEnum.PAUSED.getValue()) && !clockInInfo.getStatus().equals(ClockInStatusEnum.ERROR.getValue())) {
+                            if (clockInInfo.getStatus().equals(ClockInStatusEnum.SUCCESS.getValue())) {
+                                successClockInInfo.add(clockInInfo);
+                            }
+                            return true;
+                        }
+                        return false;
+                    })
                     .map(ClockInInfo::getUserId)
                     .collect(Collectors.toList());
             log.info("打卡所有用户id:" + clockInStartingUserIdList);
+
+            successClockInInfo.forEach(clockInInfo -> {
+                ClockInInfo newClock = new ClockInInfo();
+                BeanUtils.copyProperties(clockInInfo, newClock);
+                newClock.setStatus(ClockInStatusEnum.STARTING.getValue());
+                clockInInfoService.updateById(newClock);
+            });
+
             clockInStartingUserIdList.forEach(id -> {
                 String clockInUserId = redisTemplate.opsForValue().get(SIGN_USER_GROUP + id);
                 if (StringUtils.isNotBlank(clockInUserId)) {
