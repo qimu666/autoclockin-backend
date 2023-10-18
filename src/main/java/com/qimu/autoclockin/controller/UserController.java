@@ -263,8 +263,8 @@ public class UserController {
      * @return {@link BaseResponse}<{@link UserVO}>
      */
     @GetMapping("/get")
-    public BaseResponse<UserVO> getUserById(int id, HttpServletRequest request) {
-        if (id <= 0) {
+    public BaseResponse<UserVO> getUserById(String id, HttpServletRequest request) {
+        if (StringUtils.isBlank(id)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
         User user = userService.getById(id);
