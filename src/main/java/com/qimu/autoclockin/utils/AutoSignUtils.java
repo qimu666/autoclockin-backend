@@ -10,6 +10,7 @@ import com.qimu.autoclockin.exception.BusinessException;
 import com.qimu.autoclockin.model.vo.*;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ObjectUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.methods.HttpPost;
@@ -18,12 +19,14 @@ import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.util.EntityUtils;
+import org.springframework.data.redis.core.RedisTemplate;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Objects;
+import java.net.InetSocketAddress;
+import java.net.Proxy;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 
+import static com.qimu.autoclockin.constant.IpConstant.IP_POOL_KEY;
 import static com.qimu.autoclockin.constant.RequestAddressConstant.*;
 
 /**
@@ -31,6 +34,7 @@ import static com.qimu.autoclockin.constant.RequestAddressConstant.*;
  */
 @Slf4j
 public class AutoSignUtils {
+
     /**
      * 请求头
      */
@@ -42,6 +46,7 @@ public class AutoSignUtils {
         HEADERS.put("content-type", "application/json;charset=UTF-8");
         HEADERS.put("accept-encoding", "gzip");
         HEADERS.put("user-agent", "okhttp/3.14.9");
+        HEADERS.put("cl_ip", "192.168.190.1");
     }
 
     /**
@@ -49,7 +54,7 @@ public class AutoSignUtils {
      *
      * @return {@link String}
      */
-    private static String getToken() throws Exception {
+    private static String getToken() {
         try (CloseableHttpClient httpClient = HttpClientBuilder.create().build()) {
             HttpPost httpPost = new HttpPost(TOKEN_URL);
             httpPost.setHeader("content-type", "application/json;charset=UTF-8");
@@ -101,10 +106,7 @@ public class AutoSignUtils {
             HEADERS.put("sign", sign);
             HEADERS.put("phone", clockInInfoVo.getClockInAccount());
             TimeUnit.SECONDS.sleep(1);
-            String result = HttpRequest.post(LOGIN_URL)
-                    .addHeaders(HEADERS)
-                    .body(JSONUtil.toJsonStr(loginData))
-                    .execute().body();
+            String result = HttpRequest.post(LOGIN_URL).addHeaders(HEADERS).body(JSONUtil.toJsonStr(loginData)).execute().body();
             log.info("login result :{}", result);
             LoginResultVO loginResultVO = new LoginResultVO();
             loginResultVO.setLoginResult(JSONUtil.toBean(result, LoginResult.class));
@@ -114,7 +116,6 @@ public class AutoSignUtils {
             log.error("login {}", tokenResult.getMsg());
             throw new BusinessException(ErrorCode.OPERATION_ERROR, tokenResult.getMsg());
         } else {
-            log.error("login token获取异常！");
             throw new BusinessException(ErrorCode.OPERATION_ERROR, "token获取异常");
         }
     }
@@ -126,14 +127,15 @@ public class AutoSignUtils {
      * @return boolean
      * @throws InterruptedException 中断异常
      */
-    public static ClockInStatus sign(ClockInInfoVo clockInInfoVo) throws Exception {
+    public static ClockInStatus sign(boolean enable, ClockInInfoVo clockInInfoVo, String ipPoolUrl, RedisTemplate<String, String> redisTemplate) throws Exception {
+        ResponseData.IpInfo ipInfo = checkCacheIpInfo(enable, clockInInfoVo, ipPoolUrl, redisTemplate);
         // 登录
         LoginResultVO loginResultVO = login(clockInInfoVo);
         LoginResult loginResult = loginResultVO.getLoginResult();
         TimeUnit.SECONDS.sleep(1);
         ClockInStatus clockInStatus = new ClockInStatus();
         if (ObjectUtils.isNotEmpty(loginResultVO) && loginResult.getCode() == SUCCESS_CODE) {
-            return signRequest(clockInInfoVo, loginResultVO, loginResult);
+            return signRequest(ipInfo, clockInInfoVo, loginResultVO, loginResult);
         } else if (ObjectUtils.isNotEmpty(loginResult) && loginResult.getCode() != SUCCESS_CODE) {
             log.error("sign {} ", loginResult.getMsg());
             clockInStatus.setStatus(false);
@@ -146,13 +148,95 @@ public class AutoSignUtils {
         }
     }
 
-    private static ClockInStatus signRequest(ClockInInfoVo clockInInfoVo, LoginResultVO loginResultVO, LoginResult loginResult) throws InterruptedException {
+    /**
+     * 检查缓存ip信息
+     *
+     * @param enable        使可能
+     * @param clockInInfoVo 登录信息vo
+     * @param ipPoolUrl     ip池url
+     * @param redisTemplate redis模板
+     * @return {@link ResponseData.IpInfo}
+     */
+    private static ResponseData.IpInfo checkCacheIpInfo(boolean enable, ClockInInfoVo clockInInfoVo, String ipPoolUrl, RedisTemplate<String, String> redisTemplate) {
+        ResponseData.IpInfo ipInfo = null;
+        if (enable) {
+            String cacheIpInfo = redisTemplate.opsForValue().get(IP_POOL_KEY + clockInInfoVo.getUserId());
+            if (StringUtils.isNotBlank(cacheIpInfo)) {
+                ipInfo = JSONUtil.toBean(cacheIpInfo, ResponseData.IpInfo.class);
+            } else {
+                ResponseData.IpInfo getIpInfo = getIpInfo(clockInInfoVo.getUserId(), ipPoolUrl, redisTemplate);
+                if (getIpInfo == null) {
+                    redisTemplate.delete(IP_POOL_KEY + clockInInfoVo.getUserId());
+                }
+                ipInfo = getIpInfo;
+            }
+        }
+        return ipInfo;
+    }
+
+    /**
+     * 获取ip信息
+     *
+     * @param userId        用户id
+     * @param ipPoolUrl     ip池url
+     * @param redisTemplate redis模板
+     * @return {@link ResponseData.IpInfo}
+     */
+    private static ResponseData.IpInfo getIpInfo(Long userId, String ipPoolUrl, RedisTemplate<String, String> redisTemplate) {
+        cn.hutool.http.HttpResponse response = HttpRequest.get(ipPoolUrl).execute();
+        if (response.getStatus() == 200) {
+            String result = response.body();
+            ResponseData responseData = JSONUtil.toBean(result, ResponseData.class);
+            if (responseData.getCode() == -1 || responseData.getData() == null) {
+                throw new BusinessException(ErrorCode.OPERATION_ERROR, responseData.getMessage());
+            }
+            List<ResponseData.IpInfo> list = responseData.getData().getList();
+            ResponseData.IpInfo ipInfo = list.get(0);
+            boolean checkProxyIp = checkProxyIp(userId, ipInfo, redisTemplate);
+            if (checkProxyIp) {
+                return ipInfo;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 检查代理ip
+     *
+     * @param userId        用户id
+     * @param ipInfo        ip信息
+     * @param redisTemplate redis模板
+     * @return boolean
+     */
+    private static boolean checkProxyIp(Long userId, ResponseData.IpInfo ipInfo, RedisTemplate<String, String> redisTemplate) {
+        cn.hutool.http.HttpResponse res = HttpRequest.get("https://sxbaapp.vae.ha.cn/").setProxy(new Proxy(Proxy.Type.HTTP, new InetSocketAddress(ipInfo.getIp(), Integer.parseInt(ipInfo.getPort())))).setConnectionTimeout(4000).execute();
+        if (res.getStatus() == 200) {
+            log.info("ip检测成功，信息为：" + JSONUtil.toJsonStr(ipInfo));
+            redisTemplate.opsForValue().set(IP_POOL_KEY + userId, JSONUtil.toJsonStr(ipInfo), 3, TimeUnit.MINUTES);
+            return true;
+        } else {
+            redisTemplate.delete(IP_POOL_KEY + userId);
+            return false;
+        }
+    }
+
+    /**
+     * 打卡请求
+     *
+     * @param ipInfo        ip信息
+     * @param clockInInfoVo 登录信息vo
+     * @param loginResultVO 登录结果vo
+     * @param loginResult   登录结果
+     * @return {@link ClockInStatus}
+     * @throws InterruptedException 中断异常
+     */
+    private static ClockInStatus signRequest(ResponseData.IpInfo ipInfo, ClockInInfoVo clockInInfoVo, LoginResultVO loginResultVO, LoginResult loginResult) throws InterruptedException {
         SignData signData = new SignData();
         signData.setDtype(1);
         signData.setProbability(2);
         signData.setAddress(clockInInfoVo.getAddress());
-        signData.setLongitude(clockInInfoVo.getLongitude());
-        signData.setLatitude(clockInInfoVo.getLatitude());
+        signData.setLongitude(getRandomLatitudeAndLongitude(clockInInfoVo.getLongitude()));
+        signData.setLatitude(getRandomLatitudeAndLongitude(clockInInfoVo.getLatitude()));
         signData.setPhonetype(clockInInfoVo.getDeviceType());
         signData.setUid(loginResult.getData().getUid());
         // 消息认证码算法
@@ -160,7 +244,14 @@ public class AutoSignUtils {
         HEADERS.put("sign", sign);
         HEADERS.put("phone", clockInInfoVo.getDeviceType());
         TimeUnit.SECONDS.sleep(2);
-        String result = HttpRequest.post(SIGN_URL).addHeaders(HEADERS).body(JSONUtil.toJsonStr(signData)).execute().body();
+        HttpRequest httpRequest = HttpRequest.post(SIGN_URL).addHeaders(HEADERS).body(JSONUtil.toJsonStr(signData));
+        if (ipInfo != null) {
+            log.info("请求使用代理ip池：{}:{}", ipInfo.getIp(), ipInfo.getPort());
+            httpRequest.setHttpProxy(ipInfo.getIp(), Integer.parseInt(ipInfo.getPort()));
+        }
+        cn.hutool.http.HttpResponse response = httpRequest.execute();
+
+        String result = response.body();
         ClockInStatus clockInStatus = new ClockInStatus();
         log.info("sign result : {}", result);
         LoginResult loginResponse = JSONUtil.toBean(result, LoginResult.class);
@@ -178,5 +269,21 @@ public class AutoSignUtils {
             clockInStatus.setMessage("sign 打卡异常");
             return clockInStatus;
         }
+    }
+
+    /**
+     * 随机经纬度
+     *
+     * @param latitudeAndLongitude 经纬度
+     * @return 新的经纬度
+     */
+    private static String getRandomLatitudeAndLongitude(String latitudeAndLongitude) {
+        Random random = new Random();
+        // 生成0到10之间的随机数
+        int randomValue = random.nextInt(11);
+        StringBuilder subLatitudeAndLongitude = new StringBuilder(latitudeAndLongitude);
+        // 截取最后以为，替换为0-10之间的随机数，组装为新的字符串
+        subLatitudeAndLongitude.replace(subLatitudeAndLongitude.length() - 1, subLatitudeAndLongitude.length(), String.valueOf(randomValue));
+        return subLatitudeAndLongitude.toString();
     }
 }

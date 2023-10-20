@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.qimu.autoclockin.common.ErrorCode;
 import com.qimu.autoclockin.config.EmailConfig;
 import com.qimu.autoclockin.exception.BusinessException;
+import com.qimu.autoclockin.model.dto.IpPool.IpPoolClient;
 import com.qimu.autoclockin.model.entity.ClockInInfo;
 import com.qimu.autoclockin.model.entity.DailyCheckIn;
 import com.qimu.autoclockin.model.entity.User;
@@ -15,6 +16,7 @@ import com.qimu.autoclockin.service.DailyCheckInService;
 import com.qimu.autoclockin.service.UserService;
 import com.qimu.autoclockin.utils.AutoSignUtils;
 import com.qimu.autoclockin.utils.RedissonLockUtil;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.BeanUtils;
 import org.springframework.data.redis.connection.Message;
@@ -33,6 +35,7 @@ import java.util.concurrent.TimeUnit;
 
 import static com.qimu.autoclockin.constant.ClockInConstant.SIGN_USER_GROUP;
 import static com.qimu.autoclockin.constant.EmailConstant.EMAIL_TITLE;
+import static com.qimu.autoclockin.constant.IpConstant.IP_URL;
 
 /**
  * @Author: QiMu
@@ -41,6 +44,7 @@ import static com.qimu.autoclockin.constant.EmailConstant.EMAIL_TITLE;
  * @Description: 密钥过期侦听器
  */
 @Component
+@Slf4j
 public class KeyExpirationListener extends KeyExpirationEventMessageListener {
     @Resource
     private EmailConfig emailConfig;
@@ -56,6 +60,8 @@ public class KeyExpirationListener extends KeyExpirationEventMessageListener {
     private UserService userService;
     @Resource
     private RedisTemplate<String, String> redisTemplate;
+    @Resource
+    private IpPoolClient ipPoolClient;
 
     public KeyExpirationListener(RedisMessageListenerContainer listenerContainer) {
         super(listenerContainer);
@@ -83,7 +89,7 @@ public class KeyExpirationListener extends KeyExpirationEventMessageListener {
                 ClockInInfo clockInInfo = new ClockInInfo();
                 clockInInfo.setId(clockInInfoVo.getId());
                 try {
-                    ClockInStatus sign = AutoSignUtils.sign(clockInInfoVo);
+                    ClockInStatus sign = AutoSignUtils.sign(ipPoolClient.isEnableTrue(), clockInInfoVo, buildUrl(), redisTemplate);
                     if (sign.getStatus()) {
                         clockInInfo.setStatus(ClockInStatusEnum.SUCCESS.getValue());
                         saveDailyCheckInInfo(user, clockInInfo, sign.getMessage());
@@ -219,5 +225,16 @@ public class KeyExpirationListener extends KeyExpirationEventMessageListener {
         helper.setFrom(EMAIL_TITLE + '<' + emailConfig.getEmailFrom() + '>');
         helper.setTo(user.getEmail());
         mailSender.send(mimeMessage);
+    }
+
+    /**
+     * 生成url
+     *
+     * @return {@link String}
+     */
+    private String buildUrl() {
+        String url = IP_URL + "?repeat=1" + "&format=" + ipPoolClient.getFormat() + "&protocol=" + ipPoolClient.getProtocol() + "&num=" + ipPoolClient.getExtractQuantity() + "&no=" + ipPoolClient.getPackageNumber() + "&mode=" + ipPoolClient.getAuthorizationMode() + "&secret=" + ipPoolClient.getPackageSecret() + "&minute=" + ipPoolClient.getOccupancyDuration() + "&pool=" + ipPoolClient.getIpPoolType();
+        log.info("获取ip的url为：" + url);
+        return url;
     }
 }
