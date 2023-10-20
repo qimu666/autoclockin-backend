@@ -35,7 +35,7 @@ spring:
 ip:
   config:
 #  todo 使用ip池需要先开启
-    enable: false
+    enable: true
     package-number: ip池套餐编号
     package-secret: ip池套餐密钥
 
