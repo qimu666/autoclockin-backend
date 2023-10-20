@@ -20,7 +20,7 @@ spring:
     port: 6379
     host: localhost
     database: 0
-  # todo 修改为自己的邮箱配置
+  # todo 修改为自己的邮箱配置 申请参考地址：https://blog.csdn.net/madifu/article/details/131246584
   mail:
     host: smtp.qq.com
     username: 2483482026@qq.com
@@ -31,6 +31,14 @@ spring:
         smtp:
           ssl:
             enable: true
+# todo 申请ip池https://www.ipzan.com/user/extractapi,填入配置
+ip:
+  config:
+#  todo 使用ip池需要先开启
+    enable: true
+    package-number: ip池套餐编号
+    package-secret: ip池套餐密钥
+
 server:
   port: 7529
   servlet:
