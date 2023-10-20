@@ -76,20 +76,25 @@ public class ClockInInfoController {
         BeanUtils.copyProperties(clockInInfoAddRequest, clockInInfo);
         // 校验
         clockInInfoService.validClockInInfo(clockInInfo, true);
+        if (StringUtils.isNotBlank(clockInInfoAddRequest.getUserAccount())) {
+            LambdaQueryWrapper<User> userLambdaQueryWrapper = new LambdaQueryWrapper<>();
+            userLambdaQueryWrapper.eq(User::getUserAccount, clockInInfoAddRequest.getUserAccount());
+            User user = userService.getOne(userLambdaQueryWrapper);
+            if (user == null) {
+                throw new BusinessException(ErrorCode.OPERATION_ERROR, "平台账号不存在");
+            }
+            LambdaQueryWrapper<ClockInInfo> clockInInfoLambdaQueryWrapper = new LambdaQueryWrapper<>();
+            clockInInfoLambdaQueryWrapper.eq(ClockInInfo::getUserId, user.getId());
+            long count = clockInInfoService.count(clockInInfoLambdaQueryWrapper);
+            if (count > 0) {
+                throw new BusinessException(ErrorCode.OPERATION_ERROR, "该账号打卡信息已存在");
+            }
+            clockInInfo.setUserId(user.getId());
+        }else {
+            User loginUser = userService.getLoginUser(request);
+            clockInInfo.setUserId(loginUser.getId());
+        }
 
-        LambdaQueryWrapper<User> userLambdaQueryWrapper = new LambdaQueryWrapper<>();
-        userLambdaQueryWrapper.eq(User::getUserAccount, clockInInfoAddRequest.getUserAccount());
-        User user = userService.getOne(userLambdaQueryWrapper);
-        if (user == null) {
-            throw new BusinessException(ErrorCode.OPERATION_ERROR, "平台账号不存在");
-        }
-        LambdaQueryWrapper<ClockInInfo> clockInInfoLambdaQueryWrapper = new LambdaQueryWrapper<>();
-        clockInInfoLambdaQueryWrapper.eq(ClockInInfo::getUserId, user.getId());
-        long count = clockInInfoService.count(clockInInfoLambdaQueryWrapper);
-        if (count > 0) {
-            throw new BusinessException(ErrorCode.OPERATION_ERROR, "该账号打卡信息已存在");
-        }
-        clockInInfo.setUserId(user.getId());
         ClockInInfoVo clockInInfoVo = new ClockInInfoVo();
         BeanUtils.copyProperties(clockInInfoAddRequest, clockInInfoVo);
         try {
