@@ -36,6 +36,7 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import static com.qimu.autoclockin.constant.ClockInConstant.SIGN_USER_GROUP;
+import static com.qimu.autoclockin.constant.UserConstant.ADMIN_ROLE;
 import static com.qimu.autoclockin.job.ClockInJob.getObtainClockInTime;
 import static com.qimu.autoclockin.utils.AutoSignUtils.login;
 
@@ -76,7 +77,11 @@ public class ClockInInfoController {
         BeanUtils.copyProperties(clockInInfoAddRequest, clockInInfo);
         // 校验
         clockInInfoService.validClockInInfo(clockInInfo, true);
-        if (StringUtils.isNotBlank(clockInInfoAddRequest.getUserAccount())) {
+        User loginUser = userService.getLoginUser(request);
+        if (loginUser.getUserRole().equals(ADMIN_ROLE)) {
+            if (StringUtils.isBlank(clockInInfoAddRequest.getUserAccount())) {
+                throw new BusinessException(ErrorCode.OPERATION_ERROR, "平台账号不不能为空");
+            }
             LambdaQueryWrapper<User> userLambdaQueryWrapper = new LambdaQueryWrapper<>();
             userLambdaQueryWrapper.eq(User::getUserAccount, clockInInfoAddRequest.getUserAccount());
             User user = userService.getOne(userLambdaQueryWrapper);
@@ -90,11 +95,9 @@ public class ClockInInfoController {
                 throw new BusinessException(ErrorCode.OPERATION_ERROR, "该账号打卡信息已存在");
             }
             clockInInfo.setUserId(user.getId());
-        }else {
-            User loginUser = userService.getLoginUser(request);
+        } else {
             clockInInfo.setUserId(loginUser.getId());
         }
-
         ClockInInfoVo clockInInfoVo = new ClockInInfoVo();
         BeanUtils.copyProperties(clockInInfoAddRequest, clockInInfoVo);
         try {

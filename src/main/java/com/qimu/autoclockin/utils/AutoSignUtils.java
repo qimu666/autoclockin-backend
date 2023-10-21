@@ -186,7 +186,10 @@ public class AutoSignUtils {
         cn.hutool.http.HttpResponse response = HttpRequest.get(ipPoolUrl).execute();
         if (response.getStatus() == 200) {
             String result = response.body();
-            ResponseData responseData = JSONUtil.toBean(result, ResponseData.class);
+            if (StringUtils.isBlank(result)) {
+                throw new BusinessException(ErrorCode.OPERATION_ERROR, "ip池获取ip失败,已重试");
+            }
+            ResponseData responseData = JSONUtil.toBean(JSONUtil.toJsonStr(result), ResponseData.class);
             if (responseData.getCode() == -1 || responseData.getData() == null) {
                 throw new BusinessException(ErrorCode.OPERATION_ERROR, responseData.getMessage());
             }
@@ -243,18 +246,28 @@ public class AutoSignUtils {
         String sign = hashMessageAuthenticationCode(signData, loginResultVO.getToken());
         HEADERS.put("sign", sign);
         HEADERS.put("phone", clockInInfoVo.getDeviceType());
-        TimeUnit.SECONDS.sleep(2);
+        TimeUnit.SECONDS.sleep(1);
         HttpRequest httpRequest = HttpRequest.post(SIGN_URL).addHeaders(HEADERS).body(JSONUtil.toJsonStr(signData));
         if (ipInfo != null) {
             log.info("请求使用代理ip池：{}:{}", ipInfo.getIp(), ipInfo.getPort());
             httpRequest.setHttpProxy(ipInfo.getIp(), Integer.parseInt(ipInfo.getPort()));
         }
         cn.hutool.http.HttpResponse response = httpRequest.execute();
-
-        String result = response.body();
         ClockInStatus clockInStatus = new ClockInStatus();
-        log.info("sign result : {}", result);
-        LoginResult loginResponse = JSONUtil.toBean(result, LoginResult.class);
+        if (response.getStatus() != 200) {
+            clockInStatus.setStatus(false);
+            clockInStatus.setMessage("打卡失败，将在15分钟后重试");
+            return clockInStatus;
+        }
+        String result = response.body();
+
+        log.info("sign result : 【{}】", result);
+        if (StringUtils.isBlank(result)) {
+            clockInStatus.setStatus(false);
+            clockInStatus.setMessage("sign 打卡异常，将在15分钟后重试");
+            return clockInStatus;
+        }
+        LoginResult loginResponse = JSONUtil.toBean(JSONUtil.toJsonStr(result), LoginResult.class);
         if (Objects.nonNull(loginResponse) && loginResponse.getCode() == SUCCESS_CODE) {
             clockInStatus.setStatus(true);
             clockInStatus.setMessage(loginResponse.getMsg());
@@ -266,7 +279,7 @@ public class AutoSignUtils {
             return clockInStatus;
         } else {
             clockInStatus.setStatus(false);
-            clockInStatus.setMessage("sign 打卡异常");
+            clockInStatus.setMessage("sign 打卡异常，将在15分钟后重试");
             return clockInStatus;
         }
     }

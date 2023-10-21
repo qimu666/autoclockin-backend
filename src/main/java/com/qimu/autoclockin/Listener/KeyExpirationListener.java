@@ -1,6 +1,7 @@
 package com.qimu.autoclockin.Listener;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.qimu.autoclockin.common.ErrorCode;
 import com.qimu.autoclockin.config.EmailConfig;
 import com.qimu.autoclockin.exception.BusinessException;
@@ -36,6 +37,7 @@ import java.util.concurrent.TimeUnit;
 import static com.qimu.autoclockin.constant.ClockInConstant.SIGN_USER_GROUP;
 import static com.qimu.autoclockin.constant.EmailConstant.EMAIL_TITLE;
 import static com.qimu.autoclockin.constant.IpConstant.IP_URL;
+import static com.qimu.autoclockin.model.enums.IpPoolStatusEnum.STARTING;
 
 /**
  * @Author: QiMu
@@ -83,13 +85,18 @@ public class KeyExpirationListener extends KeyExpirationEventMessageListener {
                 checkInLambdaQueryWrapper.eq(DailyCheckIn::getStatus, 1);
                 long count = dailyCheckInService.count(checkInLambdaQueryWrapper);
                 if (count > 0) {
+                    LambdaUpdateWrapper<ClockInInfo> clockInInfoQueryWrapper = new LambdaUpdateWrapper<>();
+                    clockInInfoQueryWrapper.eq(ClockInInfo::getUserId, user.getId());
+                    clockInInfoQueryWrapper.set(ClockInInfo::getStatus, ClockInStatusEnum.SUCCESS.getValue());
+                    clockInInfoService.update(clockInInfoQueryWrapper);
                     throw new BusinessException(ErrorCode.OPERATION_ERROR, "今日已签到");
                 }
                 ClockInInfoVo clockInInfoVo = getClockInInfoVo(user);
                 ClockInInfo clockInInfo = new ClockInInfo();
                 clockInInfo.setId(clockInInfoVo.getId());
                 try {
-                    ClockInStatus sign = AutoSignUtils.sign(ipPoolClient.isEnableTrue(), clockInInfoVo, buildUrl(), redisTemplate);
+                    boolean isEnable = ipPoolClient.isEnableTrue() && clockInInfoVo.getIsEnable().equals(STARTING.getValue());
+                    ClockInStatus sign = AutoSignUtils.sign(isEnable, clockInInfoVo, buildUrl(), redisTemplate);
                     if (sign.getStatus()) {
                         clockInInfo.setStatus(ClockInStatusEnum.SUCCESS.getValue());
                         saveDailyCheckInInfo(user, clockInInfo, sign.getMessage());

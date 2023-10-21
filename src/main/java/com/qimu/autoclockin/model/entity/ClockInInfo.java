@@ -23,7 +23,10 @@ public class ClockInInfo implements Serializable {
      */
     @TableId(type = IdType.ASSIGN_ID)
     private Long id;
-
+    /**
+     * 是否启用ip池
+     */
+    private Integer isEnable;
     /**
      * 创建用户
      */
