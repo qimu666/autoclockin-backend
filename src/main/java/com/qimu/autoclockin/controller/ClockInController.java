@@ -1,6 +1,7 @@
 package com.qimu.autoclockin.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.qimu.autoclockin.annotation.AuthCheck;
 import com.qimu.autoclockin.common.BaseResponse;
 import com.qimu.autoclockin.common.ErrorCode;
 import com.qimu.autoclockin.common.IdRequest;
@@ -9,6 +10,7 @@ import com.qimu.autoclockin.exception.BusinessException;
 import com.qimu.autoclockin.model.entity.ClockInInfo;
 import com.qimu.autoclockin.model.entity.User;
 import com.qimu.autoclockin.model.enums.ClockInStatusEnum;
+import com.qimu.autoclockin.model.enums.IpPoolStatusEnum;
 import com.qimu.autoclockin.service.ClockInInfoService;
 import com.qimu.autoclockin.service.UserService;
 import lombok.extern.slf4j.Slf4j;
@@ -133,6 +135,51 @@ public class ClockInController {
         clockInInfo.setStatus(ClockInStatusEnum.PAUSED.getValue());
         boolean b = clockInInfoService.updateById(clockInInfo);
         redisTemplate.delete(SIGN_USER_GROUP + clockInInfo.getUserId());
+        return ResultUtils.success(b);
+    }
+
+    /**
+     * 使用Ip池
+     *
+     * @param idRequest id请求
+     * @return {@link BaseResponse}<{@link Boolean}>
+     */
+    @PostMapping("/pool/starting")
+    @AuthCheck(mustRole = "admin")
+    public BaseResponse<Boolean> startingIpPool(@RequestBody IdRequest idRequest) {
+        if (ObjectUtils.anyNull(idRequest, idRequest.getId()) || idRequest.getId() <= 0) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        Long id = idRequest.getId();
+        ClockInInfo clockInInfo = clockInInfoService.getById(id);
+        if (clockInInfo == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
+        }
+        clockInInfo.setIsEnable(IpPoolStatusEnum.STARTING.getValue());
+        boolean b = clockInInfoService.updateById(clockInInfo);
+        return ResultUtils.success(b);
+    }
+
+    /**
+     * 关闭使用Ip池
+     *
+     * @param idRequest id请求
+     * @param request   请求
+     * @return {@link BaseResponse}<{@link Boolean}>
+     */
+    @PostMapping("/pool/stop")
+    @AuthCheck(mustRole = "admin")
+    public BaseResponse<Boolean> stopIpPool(@RequestBody IdRequest idRequest, HttpServletRequest request) {
+        if (ObjectUtils.anyNull(idRequest, idRequest.getId()) || idRequest.getId() <= 0) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        Long id = idRequest.getId();
+        ClockInInfo clockInInfo = clockInInfoService.getById(id);
+        if (clockInInfo == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR);
+        }
+        clockInInfo.setIsEnable(IpPoolStatusEnum.PAUSED.getValue());
+        boolean b = clockInInfoService.updateById(clockInInfo);
         return ResultUtils.success(b);
     }
 }

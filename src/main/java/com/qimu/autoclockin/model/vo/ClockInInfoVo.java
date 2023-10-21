@@ -14,7 +14,10 @@ import java.util.Date;
 @Data
 public class ClockInInfoVo implements Serializable {
     private Long id;
-
+    /**
+     * 是否启用ip池
+     */
+    private Integer isEnable;
     /**
      * 创建用户
      */
