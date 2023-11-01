@@ -1,6 +1,6 @@
 <p align="center">
     <img src=https://img.qimuu.icu/typory/logo.gif width=188/>
-</p>
+</p> 
 
 <h1 align="center">Auto Clock In 自动打卡</h1>
 <p align="center"><strong>职校家园自动打卡助手</strong></p>
