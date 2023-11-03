@@ -38,7 +38,18 @@ ip:
     enable: true
     package-number: ip池套餐编号
     package-secret: ip池套餐密钥
-
+### todo 钉钉机器人配置,参考文档：https://open.dingtalk.com/document/isvapp/custom-bot-access-send-message
+dingtalk:
+  message:
+    push:
+      enable: true
+      access-token: xxxxxxxxxxxxxxxxxxxxxxxx
+      secret: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+# todo 腾讯地图api https://lbs.qq.com/dev/console/application/mine
+tencent:
+  map:
+    enable: true
+    key: xxxxxxxxxxx
 server:
   port: 7529
   servlet:

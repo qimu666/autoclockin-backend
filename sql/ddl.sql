@@ -27,13 +27,14 @@ create table if not exists clock_in_info
 
 create table if not exists daily_check_in
 (
-    id          bigint auto_increment comment 'id'
+    id             bigint auto_increment comment 'id'
         primary key,
-    userId      bigint                             not null comment '签到人',
-    description varchar(256)                       null comment '描述',
-    status      tinyint  default 0                 not null comment '打卡状态( 0-打卡失败 1-已打卡)',
-    createTime  datetime default CURRENT_TIMESTAMP not null comment '创建时间',
-    updateTime  datetime default CURRENT_TIMESTAMP not null on update CURRENT_TIMESTAMP comment '更新时间'
+    userId         bigint                             not null comment '签到人',
+    clockInAccount varchar(256)                       not null comment '打卡账号',
+    description    varchar(256)                       null comment '描述',
+    status         tinyint  default 0                 not null comment '打卡状态( 0-打卡失败 1-已打卡)',
+    createTime     datetime default CURRENT_TIMESTAMP not null comment '创建时间',
+    updateTime     datetime default CURRENT_TIMESTAMP not null on update CURRENT_TIMESTAMP comment '更新时间'
 )
     comment '每日签到表';
 
@@ -55,6 +56,4 @@ create table if not exists user
         unique (userAccount)
 )
     comment '用户';
-
-
 

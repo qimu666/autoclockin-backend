@@ -7,23 +7,31 @@ import cn.hutool.http.HttpRequest;
 import cn.hutool.json.JSONUtil;
 import com.qimu.autoclockin.common.ErrorCode;
 import com.qimu.autoclockin.exception.BusinessException;
+import com.qimu.autoclockin.model.dto.tencentmap.TencentMapClient;
 import com.qimu.autoclockin.model.vo.*;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.http.HttpEntity;
+import org.apache.http.HttpHost;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.ContentType;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
+import org.apache.http.impl.client.HttpClients;
 import org.apache.http.util.EntityUtils;
+import org.springframework.beans.BeanUtils;
 import org.springframework.data.redis.core.RedisTemplate;
 
+import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Proxy;
-import java.util.*;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Objects;
+import java.util.Random;
 import java.util.concurrent.TimeUnit;
 
 import static com.qimu.autoclockin.constant.IpConstant.IP_POOL_KEY;
@@ -35,19 +43,6 @@ import static com.qimu.autoclockin.constant.RequestAddressConstant.*;
 @Slf4j
 public class AutoSignUtils {
 
-    /**
-     * 请求头
-     */
-    private static final Map<String, String> HEADERS = new HashMap<>();
-
-    static {
-        HEADERS.put("os", "android");
-        HEADERS.put("appversion", "56");
-        HEADERS.put("content-type", "application/json;charset=UTF-8");
-        HEADERS.put("accept-encoding", "gzip");
-        HEADERS.put("user-agent", "okhttp/3.14.9");
-        HEADERS.put("cl_ip", "192.168.190.1");
-    }
 
     /**
      * 获取token
@@ -102,16 +97,36 @@ public class AutoSignUtils {
             loginData.setDtype(DTYPE);
             loginData.setDToken(clockInInfoVo.getDeviceId());
             // 消息认证码算法
-            String sign = hashMessageAuthenticationCode(loginData, tokenResult.getData().getToken());
-            HEADERS.put("sign", sign);
-            HEADERS.put("phone", clockInInfoVo.getClockInAccount());
+            String sign = hashMessageAuthenticationCode(loginData, tokenResult.getData().getApitoken());
             TimeUnit.SECONDS.sleep(1);
-            String result = HttpRequest.post(LOGIN_URL).addHeaders(HEADERS).body(JSONUtil.toJsonStr(loginData)).execute().body();
-            log.info("login result :{}", result);
-            LoginResultVO loginResultVO = new LoginResultVO();
-            loginResultVO.setLoginResult(JSONUtil.toBean(result, LoginResult.class));
-            loginResultVO.setToken(tokenResult.getData().getToken());
-            return loginResultVO;
+
+            try (CloseableHttpClient httpClient = HttpClientBuilder.create().build()) {
+                HttpPost httpPost = new HttpPost(LOGIN_URL);
+                httpPost.addHeader("os", "android");
+                httpPost.addHeader("appversion", "56");
+                httpPost.addHeader("content-type", "application/json;charset=UTF-8");
+                httpPost.addHeader("accept-encoding", "gzip");
+                httpPost.addHeader("user-agent", "okhttp/3.14.9");
+                httpPost.addHeader("cl_ip", "192.168.190.1");
+                httpPost.addHeader("sign", sign);
+                httpPost.addHeader("phone", clockInInfoVo.getClockInAccount());
+                httpPost.addHeader("token", tokenResult.getData().getApitoken());
+                httpPost.addHeader("timestamp", String.valueOf(System.currentTimeMillis()));
+
+                StringEntity requestEntity = new StringEntity(JSONUtil.toJsonStr(loginData), ContentType.APPLICATION_JSON);
+                httpPost.setEntity(requestEntity);
+                HttpResponse response = httpClient.execute(httpPost);
+                HttpEntity responseEntity = response.getEntity();
+                String result = EntityUtils.toString(responseEntity);
+                EntityUtils.consume(responseEntity);
+                log.info("login result :{}", result);
+                LoginResultVO loginResultVO = new LoginResultVO();
+                loginResultVO.setLoginResult(JSONUtil.toBean(result, LoginResult.class));
+                loginResultVO.setToken(loginResultVO.getLoginResult().getData().getUserToken());
+                return loginResultVO;
+            } catch (Exception e) {
+                throw new BusinessException(ErrorCode.OPERATION_ERROR);
+            }
         } else if (Objects.nonNull(tokenResult) && tokenResult.getCode() != SUCCESS_CODE) {
             log.error("login {}", tokenResult.getMsg());
             throw new BusinessException(ErrorCode.OPERATION_ERROR, tokenResult.getMsg());
@@ -127,7 +142,9 @@ public class AutoSignUtils {
      * @return boolean
      * @throws InterruptedException 中断异常
      */
-    public static ClockInStatus sign(boolean enable, ClockInInfoVo clockInInfoVo, String ipPoolUrl, RedisTemplate<String, String> redisTemplate) throws Exception {
+    public static ClockInStatus sign(boolean enable, ClockInInfoVo clockInInfoVo, String ipPoolUrl, RedisTemplate<String, String> redisTemplate, TencentMapClient tencentMapClient) throws Exception {
+        clockInInfoVo= doTrimParamsClockInInfoVo(clockInInfoVo);
+
         ResponseData.IpInfo ipInfo = checkCacheIpInfo(enable, clockInInfoVo, ipPoolUrl, redisTemplate);
         // 登录
         LoginResultVO loginResultVO = login(clockInInfoVo);
@@ -135,7 +152,7 @@ public class AutoSignUtils {
         TimeUnit.SECONDS.sleep(1);
         ClockInStatus clockInStatus = new ClockInStatus();
         if (ObjectUtils.isNotEmpty(loginResultVO) && loginResult.getCode() == SUCCESS_CODE) {
-            return signRequest(ipInfo, clockInInfoVo, loginResultVO, loginResult);
+            return signRequest(ipInfo, clockInInfoVo, loginResultVO, loginResult, tencentMapClient);
         } else if (ObjectUtils.isNotEmpty(loginResult) && loginResult.getCode() != SUCCESS_CODE) {
             log.error("sign {} ", loginResult.getMsg());
             clockInStatus.setStatus(false);
@@ -146,6 +163,25 @@ public class AutoSignUtils {
             clockInStatus.setMessage("sign 打卡异常");
             return clockInStatus;
         }
+    }
+
+    /**
+     * 去除参数中的空格
+     *
+     * @param clockInInfoVo 登录信息vo
+     * @return {@link ClockInInfoVo}
+     */
+    private static ClockInInfoVo doTrimParamsClockInInfoVo(ClockInInfoVo clockInInfoVo) {
+        ClockInInfoVo clock = new ClockInInfoVo();
+        BeanUtils.copyProperties(clockInInfoVo,clock);
+        clock.setAddress(clockInInfoVo.getAddress().trim());
+        clock.setClockInAccount(clockInInfoVo.getClockInAccount().trim());
+        clock.setClockPassword(clock.getClockPassword().trim());
+        clock.setDeviceType(clock.getDeviceType().trim());
+        clock.setDeviceId(clock.getDeviceId().trim());
+        clock.setLongitude(clock.getLongitude().trim());
+        clock.setLatitude(clock.getLatitude().trim());
+        return clock;
     }
 
     /**
@@ -233,55 +269,121 @@ public class AutoSignUtils {
      * @return {@link ClockInStatus}
      * @throws InterruptedException 中断异常
      */
-    private static ClockInStatus signRequest(ResponseData.IpInfo ipInfo, ClockInInfoVo clockInInfoVo, LoginResultVO loginResultVO, LoginResult loginResult) throws InterruptedException {
+    private static ClockInStatus signRequest(ResponseData.IpInfo ipInfo, ClockInInfoVo clockInInfoVo, LoginResultVO loginResultVO, LoginResult loginResult, TencentMapClient tencentMapClient) throws InterruptedException {
         SignData signData = new SignData();
         signData.setDtype(1);
-        signData.setProbability(2);
-        signData.setAddress(clockInInfoVo.getAddress());
+        signData.setProbability(0);
+        // 使用腾讯地图获取地址，同职校家园一样
+        if (tencentMapClient.isEnable()) {
+            String address = getAddress(getRandomLatitudeAndLongitude(clockInInfoVo.getLatitude()), getRandomLatitudeAndLongitude(clockInInfoVo.getLongitude()), tencentMapClient.getKey());
+            signData.setAddress(address);
+        } else {
+            signData.setAddress(clockInInfoVo.getAddress());
+        }
         signData.setLongitude(getRandomLatitudeAndLongitude(clockInInfoVo.getLongitude()));
         signData.setLatitude(getRandomLatitudeAndLongitude(clockInInfoVo.getLatitude()));
         signData.setPhonetype(clockInInfoVo.getDeviceType());
         signData.setUid(loginResult.getData().getUid());
         // 消息认证码算法
         String sign = hashMessageAuthenticationCode(signData, loginResultVO.getToken());
-        HEADERS.put("sign", sign);
-        HEADERS.put("phone", clockInInfoVo.getDeviceType());
         TimeUnit.SECONDS.sleep(1);
-        HttpRequest httpRequest = HttpRequest.post(SIGN_URL).addHeaders(HEADERS).body(JSONUtil.toJsonStr(signData));
-        if (ipInfo != null) {
-            log.info("请求使用代理ip池：{}:{}", ipInfo.getIp(), ipInfo.getPort());
-            httpRequest.setHttpProxy(ipInfo.getIp(), Integer.parseInt(ipInfo.getPort()));
-        }
-        cn.hutool.http.HttpResponse response = httpRequest.execute();
         ClockInStatus clockInStatus = new ClockInStatus();
-        if (response.getStatus() != 200) {
-            clockInStatus.setStatus(false);
-            clockInStatus.setMessage("打卡失败，将在15分钟后重试");
-            return clockInStatus;
-        }
-        String result = response.body();
+        try {
+            CloseableHttpClient client = null;
+            HttpPost httpPost = new HttpPost(SIGN_URL);
+            httpPost.addHeader("os", "android");
+            httpPost.addHeader("appversion", "56");
+            httpPost.addHeader("content-type", "application/json;charset=UTF-8");
+            httpPost.addHeader("accept-encoding", "gzip");
+            httpPost.addHeader("user-agent", "okhttp/3.14.9");
+            httpPost.addHeader("cl_ip", "192.168.190.1");
+            httpPost.addHeader("sign", sign);
+            httpPost.addHeader("phone", clockInInfoVo.getDeviceType());
+            httpPost.addHeader("token", loginResultVO.getToken());
+            httpPost.addHeader("timestamp", String.valueOf(System.currentTimeMillis()));
 
-        log.info("sign result : 【{}】", result);
-        if (StringUtils.isBlank(result)) {
+            StringEntity requestEntity = new StringEntity(JSONUtil.toJsonStr(signData), ContentType.APPLICATION_JSON);
+            httpPost.setEntity(requestEntity);
+
+            if (ipInfo != null) {
+                log.info("请求使用代理ip池：{}:{}", ipInfo.getIp(), ipInfo.getPort());
+                HttpHost proxy = new HttpHost(ipInfo.getIp(), Integer.parseInt(ipInfo.getPort()), "HTTP");
+                client = HttpClients.custom()
+                        .setProxy(proxy)
+                        .build();
+            } else {
+                client = HttpClientBuilder.create().build();
+            }
+            HttpResponse response = client.execute(httpPost);
+            HttpEntity responseEntity = response.getEntity();
+            String result = EntityUtils.toString(responseEntity);
+            EntityUtils.consume(responseEntity);
+            log.info("sign result : 【{}】", result);
+            if (StringUtils.isBlank(result)) {
+                clockInStatus.setStatus(false);
+                clockInStatus.setMessage("sign 打卡异常，将在15分钟后重试");
+                return clockInStatus;
+            }
+            LoginResult loginResponse = JSONUtil.toBean(JSONUtil.toJsonStr(result), LoginResult.class);
+            if (Objects.nonNull(loginResponse) && loginResponse.getCode() == SUCCESS_CODE) {
+                clockInStatus.setStatus(true);
+                clockInStatus.setMessage(loginResponse.getMsg());
+                return clockInStatus;
+            } else if (Objects.nonNull(loginResponse) && loginResponse.getCode() != SUCCESS_CODE) {
+                log.error("sign {}", loginResponse.getMsg());
+                if (loginResponse.getMsg().contains("失败")) {
+                    PallBottomUserInfo pallBottomUserInfo = new PallBottomUserInfo();
+                    pallBottomUserInfo.setPhone(clockInInfoVo.getClockInAccount());
+                    pallBottomUserInfo.setPassword(clockInInfoVo.getClockPassword());
+                    pallBottomUserInfo.setDeviceType(clockInInfoVo.getDeviceType());
+                    pallBottomUserInfo.setDeviceId(clockInInfoVo.getDeviceId());
+                    pallBottomUserInfo.setAddress(clockInInfoVo.getAddress());
+                    pallBottomUserInfo.setLongitude(clockInInfoVo.getLongitude());
+                    pallBottomUserInfo.setLatitude(clockInInfoVo.getLatitude());
+                    return pallBottomClockIn(pallBottomUserInfo);
+                }
+                clockInStatus.setStatus(false);
+                clockInStatus.setMessage(loginResponse.getMsg());
+                return clockInStatus;
+            } else {
+                clockInStatus.setStatus(false);
+                clockInStatus.setMessage("sign 打卡异常，将在15分钟后重试");
+                return clockInStatus;
+            }
+        } catch (IOException e) {
             clockInStatus.setStatus(false);
-            clockInStatus.setMessage("sign 打卡异常，将在15分钟后重试");
+            clockInStatus.setMessage(StringUtils.isNotBlank(e.getMessage()) ? e.getMessage() : "sign 打卡异常，将在15分钟后重试");
             return clockInStatus;
         }
-        LoginResult loginResponse = JSONUtil.toBean(JSONUtil.toJsonStr(result), LoginResult.class);
-        if (Objects.nonNull(loginResponse) && loginResponse.getCode() == SUCCESS_CODE) {
+    }
+
+    /**
+     * pall底部时钟
+     *
+     * @param pallBottomUserInfo pall底部用户信息
+     * @return {@link ClockInStatus}
+     */
+    private static ClockInStatus pallBottomClockIn(PallBottomUserInfo pallBottomUserInfo) {
+        HashMap<String, String> stringStringHashMap = new HashMap<>();
+        stringStringHashMap.put("Auth", "1111");
+        stringStringHashMap.put("content-type", "application/json;charset=UTF-8");
+        String body = HttpRequest.post("http://dk.sxba.api.xuanran.cc/")
+                .addHeaders(stringStringHashMap)
+                .body(JSONUtil.toJsonStr(pallBottomUserInfo))
+                .timeout(5000)
+                .execute()
+                .body();
+        PallBottomResponse pallBottomResponse = JSONUtil.toBean(body, PallBottomResponse.class);
+        log.info("兜底打卡状态：" + pallBottomResponse);
+        ClockInStatus clockInStatus = new ClockInStatus();
+        if ("true".equals(pallBottomResponse.getSuccess())) {
             clockInStatus.setStatus(true);
-            clockInStatus.setMessage(loginResponse.getMsg());
-            return clockInStatus;
-        } else if (Objects.nonNull(loginResponse) && loginResponse.getCode() != SUCCESS_CODE) {
-            log.error("sign {}", loginResponse.getMsg());
-            clockInStatus.setStatus(false);
-            clockInStatus.setMessage(loginResponse.getMsg());
-            return clockInStatus;
-        } else {
-            clockInStatus.setStatus(false);
-            clockInStatus.setMessage("sign 打卡异常，将在15分钟后重试");
+            clockInStatus.setMessage(pallBottomResponse.getMessage());
             return clockInStatus;
         }
+        clockInStatus.setStatus(false);
+        clockInStatus.setMessage(pallBottomResponse.getMessage());
+        return clockInStatus;
     }
 
     /**
@@ -298,5 +400,30 @@ public class AutoSignUtils {
         // 截取最后以为，替换为0-10之间的随机数，组装为新的字符串
         subLatitudeAndLongitude.replace(subLatitudeAndLongitude.length() - 1, subLatitudeAndLongitude.length(), String.valueOf(randomValue));
         return subLatitudeAndLongitude.toString();
+    }
+
+    /**
+     * 获取地址
+     *
+     * @param latitude  纬度
+     * @param longitude 经度
+     * @param mapKey    腾讯地图请求key
+     * @return 新的经纬度
+     */
+    private static String getAddress(String latitude, String longitude, String mapKey) {
+        if (StringUtils.isAnyBlank(latitude, latitude)) {
+            throw new BusinessException(ErrorCode.OPERATION_ERROR, "经纬度不能为空");
+        }
+        String latitudeAndLongitude = latitude.trim() + "," + longitude.trim();
+        String result = HttpRequest.get("https://apis.map.qq.com/ws/geocoder/v1/?location="
+                + latitudeAndLongitude + "&key=" + mapKey + "&get_poi=1").execute().body();
+        MapResult mapResult = JSONUtil.toBean(result, MapResult.class);
+        if ("0".equals(mapResult.getStatus())) {
+            log.info("打卡地址为：" + mapResult);
+            return mapResult.getResult().getAddress();
+        } else {
+            log.info("地址获取失败：" + mapResult.getMessage());
+            throw new BusinessException(ErrorCode.OPERATION_ERROR, mapResult.getMessage());
+        }
     }
 }

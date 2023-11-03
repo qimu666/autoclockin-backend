@@ -19,7 +19,10 @@ public class ClockInInfoQueryRequest extends PageRequest implements Serializable
      * 创建用户
      */
     private Long userId;
-
+    /**
+     * 打卡账号
+     */
+    private String clockInAccount;
     /**
      * 打卡地址
      */
@@ -29,11 +32,6 @@ public class ClockInInfoQueryRequest extends PageRequest implements Serializable
      * 设备型号
      */
     private String deviceType;
-
-    /**
-     * 设备ID
-     */
-    private String deviceId;
 
     /**
      * 经度

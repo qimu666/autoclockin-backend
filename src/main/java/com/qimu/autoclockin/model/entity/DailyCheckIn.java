@@ -28,6 +28,10 @@ public class DailyCheckIn implements Serializable {
      */
     private Integer status;
     /**
+     * 打卡账号
+     */
+    private String clockInAccount;
+    /**
      * 签到人
      */
     private Long userId;

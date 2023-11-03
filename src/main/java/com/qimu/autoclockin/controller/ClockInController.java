@@ -1,6 +1,7 @@
 package com.qimu.autoclockin.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.toolkit.CollectionUtils;
 import com.qimu.autoclockin.annotation.AuthCheck;
 import com.qimu.autoclockin.common.BaseResponse;
 import com.qimu.autoclockin.common.ErrorCode;
@@ -15,7 +16,6 @@ import com.qimu.autoclockin.service.ClockInInfoService;
 import com.qimu.autoclockin.service.UserService;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ObjectUtils;
-import org.apache.commons.lang3.StringUtils;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -24,6 +24,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import static com.qimu.autoclockin.constant.ClockInConstant.SIGN_USER_GROUP;
@@ -54,15 +55,38 @@ public class ClockInController {
      * @return {@link BaseResponse}<{@link Boolean}>
      */
     @PostMapping("/toClockIn")
-    public BaseResponse<Boolean> toClockIn(HttpServletRequest request) {
-        User user = userService.getLoginUser(request);
-        LambdaQueryWrapper<ClockInInfo> clockInInfoQueryWrapper = new LambdaQueryWrapper<>();
-        clockInInfoQueryWrapper.eq(ClockInInfo::getUserId, user.getId());
-        ClockInInfo clockInInfo = clockInInfoService.getOne(clockInInfoQueryWrapper);
-        long secondsUntilUserTime = getObtainClockInTime(user.getId(), clockInInfo.getClockInTime());
-        if (secondsUntilUserTime > 0) {
-            redisTemplate.opsForValue().set(SIGN_USER_GROUP + user.getId(), String.valueOf(user.getId()), secondsUntilUserTime, TimeUnit.SECONDS);
+    public BaseResponse<Boolean> toClockIn(@RequestBody IdRequest idRequest, HttpServletRequest request) {
+        if (ObjectUtils.anyNull(idRequest, idRequest.getId()) || idRequest.getId() <= 0) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
+        ClockInInfo clockInInfo = clockInInfoService.getById(idRequest.getId());
+        if (clockInInfo == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "打卡信息不存在");
+        }
+        long secondsUntilUserTime = getObtainClockInTime(clockInInfo);
+        if (secondsUntilUserTime > 0) {
+            redisTemplate.opsForValue().set(SIGN_USER_GROUP + clockInInfo.getClockInAccount(), String.valueOf(clockInInfo.getClockInAccount()), secondsUntilUserTime, TimeUnit.SECONDS);
+        }
+        return ResultUtils.success(true);
+    }
+
+    /**
+     * 补卡
+     *
+     * @param request 要求
+     * @return {@link BaseResponse}<{@link Boolean}>
+     */
+    @PostMapping("/supplementClockIn")
+    public BaseResponse<Boolean> supplementClockIn(@RequestBody IdRequest idRequest, HttpServletRequest request) {
+        if (ObjectUtils.anyNull(idRequest, idRequest.getId()) || idRequest.getId() <= 0) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        ClockInInfo clockInInfo = clockInInfoService.getById(idRequest.getId());
+        if (clockInInfo == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "打卡信息不存在");
+        }
+
+        redisTemplate.opsForValue().set(SIGN_USER_GROUP + clockInInfo.getClockInAccount(), String.valueOf(clockInInfo.getClockInAccount()), 30, TimeUnit.SECONDS);
         return ResultUtils.success(true);
     }
 
@@ -71,20 +95,8 @@ public class ClockInController {
         User user = userService.getLoginUser(request);
         LambdaQueryWrapper<ClockInInfo> clockInInfoQueryWrapper = new LambdaQueryWrapper<>();
         clockInInfoQueryWrapper.eq(ClockInInfo::getUserId, user.getId());
-        ClockInInfo clockInInfoServiceOne = clockInInfoService.getOne(clockInInfoQueryWrapper);
-        if (userService.isAdmin(request)) {
-            return ResultUtils.success(true);
-        }
-        if (ObjectUtils.isEmpty(clockInInfoServiceOne)) {
-            return ResultUtils.success(true);
-        }
-        String address = clockInInfoServiceOne.getAddress();
-        String deviceType = clockInInfoServiceOne.getDeviceType();
-        String deviceId = clockInInfoServiceOne.getDeviceId();
-        String clockInTime = clockInInfoServiceOne.getClockInTime();
-        String longitude = clockInInfoServiceOne.getLongitude();
-        String latitude = clockInInfoServiceOne.getLatitude();
-        if (StringUtils.isAnyBlank(address, deviceType, deviceId, latitude, longitude, clockInTime)) {
+        List<ClockInInfo> clockInInfoList = clockInInfoService.list(clockInInfoQueryWrapper);
+        if (CollectionUtils.isEmpty(clockInInfoList)) {
             return ResultUtils.success(true);
         }
         return ResultUtils.success(false);
@@ -108,9 +120,9 @@ public class ClockInController {
         }
         clockInInfo.setStatus(ClockInStatusEnum.STARTING.getValue());
         boolean b = clockInInfoService.updateById(clockInInfo);
-        long secondsUntilUserTime = getObtainClockInTime(clockInInfo.getUserId(), clockInInfo.getClockInTime());
+        long secondsUntilUserTime = getObtainClockInTime(clockInInfo);
         if (secondsUntilUserTime > 0) {
-            redisTemplate.opsForValue().set(SIGN_USER_GROUP + clockInInfo.getUserId(), String.valueOf(clockInInfo.getUserId()), secondsUntilUserTime, TimeUnit.SECONDS);
+            redisTemplate.opsForValue().set(SIGN_USER_GROUP + clockInInfo.getClockInAccount(), String.valueOf(clockInInfo.getClockInAccount()), secondsUntilUserTime, TimeUnit.SECONDS);
         }
         return ResultUtils.success(b);
     }
@@ -134,7 +146,7 @@ public class ClockInController {
         }
         clockInInfo.setStatus(ClockInStatusEnum.PAUSED.getValue());
         boolean b = clockInInfoService.updateById(clockInInfo);
-        redisTemplate.delete(SIGN_USER_GROUP + clockInInfo.getUserId());
+        redisTemplate.delete(SIGN_USER_GROUP + clockInInfo.getClockInAccount());
         return ResultUtils.success(b);
     }
 
