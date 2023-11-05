@@ -94,6 +94,16 @@ yarn build or npm run build
 服务器部署：
 在本地修改配置之后，使用maven打包jar、上传jar到服务器、执行表sql、运行jar
 
+## 项目展示
+
+- 管理页
+
+<img src="https://img.qimuu.icu/typory/image-20231105132406373.png" alt="image-20231105132411583" style="zoom:33%;" />
+
+- 个人页
+
+<img src="https://img.qimuu.icu/typory/image-20231105132411583.png" alt="image-20231105132411583" style="zoom:33%;" />
+
 ## 配置导航 🗺
 
 - **腾讯地图api**:职校家园同款定位,参考地址：https://lbs.qq.com/dev/console/application/mine
