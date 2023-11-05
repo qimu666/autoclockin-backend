@@ -10,4 +10,5 @@ public class LoginResultData {
     private String uid;
     private int state;
     private int type;
+    private String UserToken;
 }

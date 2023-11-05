@@ -1,14 +1,13 @@
 package com.qimu.autoclockin.job;
 
+import cn.hutool.core.util.RandomUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.qimu.autoclockin.model.entity.ClockInInfo;
 import com.qimu.autoclockin.model.entity.DailyCheckIn;
-import com.qimu.autoclockin.model.entity.User;
 import com.qimu.autoclockin.model.enums.ClockInStatusEnum;
 import com.qimu.autoclockin.service.ClockInInfoService;
 import com.qimu.autoclockin.service.DailyCheckInService;
-import com.qimu.autoclockin.service.UserService;
 import com.qimu.autoclockin.utils.RedissonLockUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -17,7 +16,6 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-import javax.annotation.PostConstruct;
 import javax.annotation.Resource;
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -46,8 +44,7 @@ public class ClockInJob {
     private DailyCheckInService dailyCheckInService;
     @Resource
     private RedissonLockUtil redissonLockUtil;
-    @Resource
-    private UserService userService;
+
 
     /**
      * 每日凌晨自动打卡
@@ -76,7 +73,7 @@ public class ClockInJob {
             List<ClockInInfo> successClockInInfo = new ArrayList<>();
 
             // 已开启自动打卡的用户id
-            List<Long> clockInStartingUserIdList = clockInInfoService.list()
+            List<String> clockInStartingUserIdList = clockInInfoService.list()
                     .stream()
                     .filter(clockInInfo -> {
                         if (!clockInInfo.getStatus().equals(ClockInStatusEnum.PAUSED.getValue()) && !clockInInfo.getStatus().equals(ClockInStatusEnum.ERROR.getValue())) {
@@ -87,9 +84,10 @@ public class ClockInJob {
                         }
                         return false;
                     })
-                    .map(ClockInInfo::getUserId)
+                    .map(ClockInInfo::getClockInAccount)
+                    .distinct()
                     .collect(Collectors.toList());
-            log.info("打卡所有用户id:" + clockInStartingUserIdList);
+            log.info("所有打卡账号为:" + clockInStartingUserIdList);
 
             successClockInInfo.forEach(clockInInfo -> {
                 ClockInInfo newClock = new ClockInInfo();
@@ -98,37 +96,65 @@ public class ClockInJob {
                 clockInInfoService.updateById(newClock);
             });
 
-            clockInStartingUserIdList.forEach(id -> {
-                String clockInUserId = redisTemplate.opsForValue().get(SIGN_USER_GROUP + id);
+            clockInStartingUserIdList.forEach(clockInAccount -> {
+                String clockInUserId = redisTemplate.opsForValue().get(SIGN_USER_GROUP + clockInAccount);
                 if (StringUtils.isNotBlank(clockInUserId)) {
                     return;
                 }
-                User user = userService.getById(id);
-                LambdaQueryWrapper<ClockInInfo> clockInInfoQueryWrapper = new LambdaQueryWrapper<>();
-                clockInInfoQueryWrapper.eq(ClockInInfo::getUserId, user.getId());
-                ClockInInfo clockInInfo = clockInInfoService.getOne(clockInInfoQueryWrapper);
-                long secondsUntilUserTime = getObtainClockInTime(user.getId(), clockInInfo.getClockInTime());
-                if (secondsUntilUserTime > 0) {
-                    redisTemplate.opsForValue().set(SIGN_USER_GROUP + user.getId(), String.valueOf(user.getId()), secondsUntilUserTime, TimeUnit.SECONDS);
-                    log.info("打卡用户添加成功:{} ,打卡时间：{}", user.getId(), clockInInfo.getClockInTime());
+                try {
+                    LambdaQueryWrapper<ClockInInfo> clockInInfoQueryWrapper = new LambdaQueryWrapper<>();
+                    clockInInfoQueryWrapper.eq(ClockInInfo::getClockInAccount, clockInAccount);
+                    ClockInInfo clockInInfo = clockInInfoService.getOne(clockInInfoQueryWrapper);
+                    addClockInToRedis(clockInInfo);
+                } catch (Exception ignored) {
+                    // 如果重复抛异常,就删除其他记录，只保留一条
+                    LambdaQueryWrapper<ClockInInfo> clockInInfoQueryWrapper = new LambdaQueryWrapper<>();
+                    clockInInfoQueryWrapper.eq(ClockInInfo::getClockInAccount, clockInAccount);
+                    List<ClockInInfo> list = clockInInfoService.list(clockInInfoQueryWrapper);
+                    // 重复数据id
+                    List<Long> idsToDelete = new ArrayList<>();
+                    if (list.size() > 1) {
+                        // 添加要删除的元素的ID到列表中
+                        for (int i = 1; i < list.size(); i++) {
+                            idsToDelete.add(list.get(i).getId());
+                        }
+                    }
+
+                    // 批量删除重复的打卡信息
+                    if (!idsToDelete.isEmpty()) {
+                        clockInInfoService.removeByIds(idsToDelete);
+                    }
+
+                    // 打卡信息补录
+                    ClockInInfo clockInInfo = list.get(0);
+                    addClockInToRedis(clockInInfo);
                 }
             });
         });
     }
 
+    private void addClockInToRedis(ClockInInfo clockInInfo) {
+        long secondsUntilUserTime = getObtainClockInTime(clockInInfo);
+        if (secondsUntilUserTime > 0) {
+            int randomTime = RandomUtil.randomInt(10, 1000);
+            redisTemplate.opsForValue().set(SIGN_USER_GROUP + clockInInfo.getClockInAccount(), String.valueOf(clockInInfo.getClockInAccount()), secondsUntilUserTime + randomTime, TimeUnit.SECONDS);
+            log.info("打卡账号添加成功:{}", clockInInfo.getClockInAccount());
+        }
+    }
+
     /**
      * 获取打卡时间
      *
-     * @param clockInTime 打卡时间
+     * @param clockInInfo 打卡信息
      * @return long
      */
-    public static long getObtainClockInTime(Long userId, String clockInTime) {
+    public static long getObtainClockInTime(ClockInInfo clockInInfo) {
         LocalDateTime currentDateTime = LocalDateTime.now();
-        if (StringUtils.isBlank(clockInTime)) {
-            log.error("打卡时间未设置,用户为：{}", userId);
+        if (StringUtils.isBlank(clockInInfo.getClockInTime())) {
+            log.error("打卡时间未设置,打卡账号为：{}", clockInInfo.getClockInAccount());
             return -1;
         }
-        LocalTime userTime = LocalTime.parse(clockInTime);
+        LocalTime userTime = LocalTime.parse(clockInInfo.getClockInTime());
         LocalDateTime userDateTime = currentDateTime.with(userTime);
         Duration duration = Duration.between(currentDateTime, userDateTime);
         return duration.getSeconds();

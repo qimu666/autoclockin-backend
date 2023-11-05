@@ -2,6 +2,7 @@ package com.qimu.autoclockin.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.toolkit.CollectionUtils;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.qimu.autoclockin.annotation.AuthCheck;
 import com.qimu.autoclockin.common.BaseResponse;
@@ -78,23 +79,26 @@ public class ClockInInfoController {
         // 校验
         clockInInfoService.validClockInInfo(clockInInfo, true);
         User loginUser = userService.getLoginUser(request);
-        if (loginUser.getUserRole().equals(ADMIN_ROLE)) {
-            if (StringUtils.isBlank(clockInInfoAddRequest.getUserAccount())) {
-                throw new BusinessException(ErrorCode.OPERATION_ERROR, "平台账号不不能为空");
-            }
+
+        LambdaQueryWrapper<ClockInInfo> clockInInfoLambdaQueryWrapper = new LambdaQueryWrapper<>();
+        clockInInfoLambdaQueryWrapper.eq(ClockInInfo::getClockInAccount, clockInInfoAddRequest.getClockInAccount());
+        long count = clockInInfoService.count(clockInInfoLambdaQueryWrapper);
+        if (count > 0) {
+            throw new BusinessException(ErrorCode.OPERATION_ERROR, "该账号打卡信息已存在");
+        }
+
+        if (loginUser.getUserRole().equals(ADMIN_ROLE) && StringUtils.isNotBlank(clockInInfoAddRequest.getUserAccount())) {
             LambdaQueryWrapper<User> userLambdaQueryWrapper = new LambdaQueryWrapper<>();
             userLambdaQueryWrapper.eq(User::getUserAccount, clockInInfoAddRequest.getUserAccount());
             User user = userService.getOne(userLambdaQueryWrapper);
             if (user == null) {
                 throw new BusinessException(ErrorCode.OPERATION_ERROR, "平台账号不存在");
             }
-            LambdaQueryWrapper<ClockInInfo> clockInInfoLambdaQueryWrapper = new LambdaQueryWrapper<>();
-            clockInInfoLambdaQueryWrapper.eq(ClockInInfo::getUserId, user.getId());
-            long count = clockInInfoService.count(clockInInfoLambdaQueryWrapper);
-            if (count > 0) {
-                throw new BusinessException(ErrorCode.OPERATION_ERROR, "该账号打卡信息已存在");
-            }
             clockInInfo.setUserId(user.getId());
+            if (StringUtils.isNotBlank(clockInInfoAddRequest.getEmail())) {
+                user.setEmail(clockInInfoAddRequest.getEmail());
+                userService.updateById(user);
+            }
         } else {
             clockInInfo.setUserId(loginUser.getId());
         }
@@ -190,9 +194,9 @@ public class ClockInInfoController {
         }
         boolean result = clockInInfoService.updateById(clockInInfo);
         if (oldClockInInfo.getStatus().equals(ClockInStatusEnum.STARTING.getValue())) {
-            long secondsUntilUserTime = getObtainClockInTime(user.getId(), clockInInfoUpdateRequest.getClockInTime());
+            long secondsUntilUserTime = getObtainClockInTime(clockInInfo);
             if (secondsUntilUserTime > 0) {
-                redisTemplate.opsForValue().set(SIGN_USER_GROUP + oldClockInInfo.getUserId(), String.valueOf(oldClockInInfo.getUserId()), secondsUntilUserTime, TimeUnit.SECONDS);
+                redisTemplate.opsForValue().set(SIGN_USER_GROUP + oldClockInInfo.getClockInAccount(), String.valueOf(oldClockInInfo.getClockInAccount()), secondsUntilUserTime, TimeUnit.SECONDS);
             }
         }
         return ResultUtils.success(result);
@@ -226,8 +230,11 @@ public class ClockInInfoController {
         User loginUser = userService.getLoginUser(request);
         LambdaQueryWrapper<ClockInInfo> clockInInfoQueryWrapper = new LambdaQueryWrapper<>();
         clockInInfoQueryWrapper.eq(ClockInInfo::getUserId, loginUser.getId());
-        ClockInInfo clockInInfoServiceOne = clockInInfoService.getOne(clockInInfoQueryWrapper);
-        ClockInInfoVo clockInInfoVo = getClockInInfoVo(clockInInfoServiceOne);
+        List<ClockInInfo> clockInInfos = clockInInfoService.list(clockInInfoQueryWrapper);
+        ClockInInfoVo clockInInfoVo = null;
+        if (CollectionUtils.isNotEmpty(clockInInfos)) {
+            clockInInfoVo = getClockInInfoVo(clockInInfos.get(0));
+        }
         return ResultUtils.success(clockInInfoVo);
     }
 
@@ -236,7 +243,7 @@ public class ClockInInfoController {
         if (clockInInfo != null) {
             BeanUtils.copyProperties(clockInInfo, clockInInfoVo);
             LambdaQueryWrapper<DailyCheckIn> dailyCheckInLambdaQueryWrapper = new LambdaQueryWrapper<>();
-            dailyCheckInLambdaQueryWrapper.eq(DailyCheckIn::getUserId, clockInInfo.getUserId());
+            dailyCheckInLambdaQueryWrapper.eq(DailyCheckIn::getClockInAccount, clockInInfo.getClockInAccount());
             DailyCheckIn checkInServiceOne = dailyCheckInService.getOne(dailyCheckInLambdaQueryWrapper);
             if (checkInServiceOne != null) {
                 clockInInfoVo.setDescription(checkInServiceOne.getDescription());
@@ -286,6 +293,7 @@ public class ClockInInfoController {
 
         String address = clockInInfoQueryRequest.getAddress();
         String deviceType = clockInInfoQueryRequest.getDeviceType();
+        String clockInAccount = clockInInfoQueryRequest.getClockInAccount();
 
         Integer status = clockInInfoQueryRequest.getStatus();
 
@@ -295,7 +303,54 @@ public class ClockInInfoController {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
         QueryWrapper<ClockInInfo> queryWrapper = new QueryWrapper<>();
-        queryWrapper.like(StringUtils.isNotBlank(address), "address", address).like(StringUtils.isNotBlank(deviceType), "deviceType", deviceType).eq(ObjectUtils.isNotEmpty(status), "status", status);
+        queryWrapper.like(StringUtils.isNotBlank(address), "address", address)
+                .like(StringUtils.isNotBlank(deviceType), "deviceType", deviceType)
+                .eq(ObjectUtils.isNotEmpty(status), "status", status)
+                .eq(ObjectUtils.isNotEmpty(clockInAccount), "clockInAccount", clockInAccount);
+
+        queryWrapper.orderBy(StringUtils.isNotBlank(sortField), sortOrder.equals(CommonConstant.SORT_ORDER_ASC), sortField);
+        Page<ClockInInfo> clockInInfoPage = clockInInfoService.page(new Page<>(current, size), queryWrapper);
+        return ResultUtils.success(clockInInfoPage);
+    }
+
+    /**
+     * 按页面列出我添加的打卡信息
+     *
+     * @param clockInInfoQueryRequest 打卡信息查询请求
+     * @param request                 要求
+     * @return {@link BaseResponse}<{@link Page}<{@link ClockInInfo}>>
+     */
+    @GetMapping("/list/myClockInInfo")
+    public BaseResponse<Page<ClockInInfo>> listMyClockInInfoByPage(ClockInInfoQueryRequest clockInInfoQueryRequest, HttpServletRequest request) {
+        if (clockInInfoQueryRequest == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        ClockInInfo clockInInfoQuery = new ClockInInfo();
+        BeanUtils.copyProperties(clockInInfoQueryRequest, clockInInfoQuery);
+        long current = clockInInfoQueryRequest.getCurrent();
+        long size = clockInInfoQueryRequest.getPageSize();
+        String sortField = clockInInfoQueryRequest.getSortField();
+        String sortOrder = clockInInfoQueryRequest.getSortOrder();
+
+        String address = clockInInfoQueryRequest.getAddress();
+        String deviceType = clockInInfoQueryRequest.getDeviceType();
+        String clockInAccount = clockInInfoQueryRequest.getClockInAccount();
+        Integer status = clockInInfoQueryRequest.getStatus();
+        User loginUser = userService.getLoginUser(request);
+        if (loginUser == null) {
+            throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR);
+        }
+        // content 需支持模糊搜索
+        // 限制爬虫
+        if (size > 50) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        QueryWrapper<ClockInInfo> queryWrapper = new QueryWrapper<>();
+        queryWrapper.like(StringUtils.isNotBlank(address), "address", address)
+                .like(StringUtils.isNotBlank(deviceType), "deviceType", deviceType)
+                .eq(ObjectUtils.isNotEmpty(status), "status", status)
+                .eq(ObjectUtils.isNotEmpty(loginUser.getId()), "userId", loginUser.getId())
+                .eq(ObjectUtils.isNotEmpty(clockInAccount), "clockInAccount", clockInAccount);
         queryWrapper.orderBy(StringUtils.isNotBlank(sortField), sortOrder.equals(CommonConstant.SORT_ORDER_ASC), sortField);
         Page<ClockInInfo> clockInInfoPage = clockInInfoService.page(new Page<>(current, size), queryWrapper);
         return ResultUtils.success(clockInInfoPage);

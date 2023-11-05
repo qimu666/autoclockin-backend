@@ -15,7 +15,7 @@ public interface RequestAddressConstant {
     /**
      * 标记url
      */
-    String TOKEN_URL = "https://sxbaapp.vae.ha.cn/interface/token.ashx";
+    String TOKEN_URL = "https://sxbaapp.zcj.jyt.henan.gov.cn/api/getApitoken.ashx";
 
     /**
      * 密钥
@@ -32,13 +32,13 @@ public interface RequestAddressConstant {
     /**
      * 登录网址
      */
-    String LOGIN_URL = "http://sxbaapp.vae.ha.cn/interface/relog.ashx";
+    String LOGIN_URL = "https://sxbaapp.zcj.jyt.henan.gov.cn/api/relog.ashx";
 
 
     /**
      * 标志url
      */
-    String SIGN_URL = "http://sxbaapp.vae.ha.cn/interface/clockindaily20220827.ashx";
+    String SIGN_URL = "https://sxbaapp.zcj.jyt.henan.gov.cn/api/clockindaily20220827.ashx";
 
     /**
      * 报告界面

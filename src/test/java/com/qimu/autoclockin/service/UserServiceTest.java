@@ -1,11 +1,13 @@
 package com.qimu.autoclockin.service;
 
+import cn.hutool.core.date.DateUtil;
 import cn.hutool.http.HttpRequest;
 import cn.hutool.http.HttpResponse;
 import cn.hutool.json.JSONUtil;
 import com.qimu.autoclockin.common.ErrorCode;
 import com.qimu.autoclockin.exception.BusinessException;
 import com.qimu.autoclockin.model.dto.IpPool.IpPoolClient;
+import com.qimu.autoclockin.model.dto.dingTalk.DingTalkPushClient;
 import com.qimu.autoclockin.model.entity.User;
 import com.qimu.autoclockin.model.vo.ClockInInfoVo;
 import com.qimu.autoclockin.model.vo.LoginResult;
@@ -25,6 +27,8 @@ import java.util.Random;
 
 import static com.qimu.autoclockin.constant.IpConstant.IP_URL;
 import static com.qimu.autoclockin.utils.AutoSignUtils.login;
+import static com.qimu.autoclockin.utils.DingTalkPushUtils.initDingTalkClient;
+import static com.qimu.autoclockin.utils.DingTalkPushUtils.sendMessageByMarkdown;
 
 /**
  * 用户服务测试
@@ -67,6 +71,24 @@ class UserServiceTest {
     @Test
     void testGetUser() throws InterruptedException {
 
+    }
+
+    @Resource
+    private DingTalkPushClient dingTalkPushClient;
+
+    @Test
+    public void sendMessageWebhook() throws Exception {
+        String message = "<h1 align=\"center\">\n" +
+                "   打卡成功\n" +
+                "</h1><br/>\n" +
+                "\n" +
+                "- 打卡账号：**17744608948**\n" +
+                "- 打卡状态：**打卡成功**\n" +
+                "- 使用IP池：**是**\n" +
+                "- 打卡状态描述：**打卡成功，待审核**\n" +
+                "- 打卡时间：**" + DateUtil.now() + "**\n" +
+                "- 打卡地址：**河南省许昌市市辖区芙蓉湖元鼎国际**\n";
+        sendMessageByMarkdown(initDingTalkClient(dingTalkPushClient), "打卡成功", message, null, false);
     }
 
     @Test
