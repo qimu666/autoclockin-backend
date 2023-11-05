@@ -24,7 +24,7 @@ spring:
   mail:
     host: smtp.qq.com
     username: 2483482026@qq.com
-    password: xswgxxxxxeaie
+    password: xswglxxxxxxxxxxxxie
     emailFrom: 2483482026@qq.com
     properties:
       mail:
@@ -34,22 +34,24 @@ spring:
 # todo 申请ip池https://www.ipzan.com?pid=20s0edv8g,填入配置
 ip:
   config:
-#  todo 使用ip池需要先开启
+    #  todo 使用ip池需要先开启
     enable: true
-    package-number: ip池套餐编号
-    package-secret: ip池套餐密钥
-### todo 钉钉机器人配置,参考文档：https://open.dingtalk.com/document/isvapp/custom-bot-access-send-message
+    package-number: 2023xxxxxxxxx5848
+    package-secret: li5xxxxxxxxxxnn9
+
+## todo 钉钉机器人配置,参考文档：https://open.dingtalk.com/document/isvapp/custom-bot-access-send-message
 dingtalk:
   message:
     push:
       enable: true
-      access-token: xxxxxxxxxxxxxxxxxxxxxxxx
-      secret: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+      access-token: 0d937843bdxxxxxxxxxxx38875be9b2d
+      secret: SEC2c4f01024axxxxxxxxxxxdff47cb0fb
+
 # todo 腾讯地图api https://lbs.qq.com/dev/console/application/mine
 tencent:
   map:
     enable: true
-    key: xxxxxxxxxxx
+    key: H5FBZ-xxxxxxxxxx-6QFTF
 server:
   port: 7529
   servlet:
@@ -63,3 +65,4 @@ mybatis-plus:
       logic-delete-field: isDelete # 全局逻辑删除的实体字段名(since 3.3.0,配置后可以忽略不配置步骤2)
       logic-delete-value: 1 # 逻辑已删除值(默认为 1)
       logic-not-delete-value: 0 # 逻辑未删除值(默认为 0)
+

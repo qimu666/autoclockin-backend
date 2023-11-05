@@ -29,6 +29,10 @@ public class ClockInInfoAddRequest implements Serializable {
      * 打卡地址
      */
     private String address;
+    /**
+     * 邮箱
+     */
+    private String email;
 
     /**
      * 设备型号

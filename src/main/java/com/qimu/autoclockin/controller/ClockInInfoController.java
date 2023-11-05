@@ -35,7 +35,6 @@ import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 
 import static com.qimu.autoclockin.constant.ClockInConstant.SIGN_USER_GROUP;
 import static com.qimu.autoclockin.constant.UserConstant.ADMIN_ROLE;
@@ -71,7 +70,6 @@ public class ClockInInfoController {
      * @return {@link BaseResponse}<{@link Long}>
      */
     @PostMapping("/add")
-    // @AuthCheck(mustRole = "admin")
     public BaseResponse<Long> addClockInInfo(@RequestBody ClockInInfoAddRequest clockInInfoAddRequest, HttpServletRequest request) {
         if (clockInInfoAddRequest == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
@@ -97,6 +95,10 @@ public class ClockInInfoController {
                 throw new BusinessException(ErrorCode.OPERATION_ERROR, "平台账号不存在");
             }
             clockInInfo.setUserId(user.getId());
+            if (StringUtils.isNotBlank(clockInInfoAddRequest.getEmail())) {
+                user.setEmail(clockInInfoAddRequest.getEmail());
+                userService.updateById(user);
+            }
         } else {
             clockInInfo.setUserId(loginUser.getId());
         }
@@ -334,7 +336,10 @@ public class ClockInInfoController {
         String deviceType = clockInInfoQueryRequest.getDeviceType();
         String clockInAccount = clockInInfoQueryRequest.getClockInAccount();
         Integer status = clockInInfoQueryRequest.getStatus();
-
+        User loginUser = userService.getLoginUser(request);
+        if (loginUser == null) {
+            throw new BusinessException(ErrorCode.NOT_LOGIN_ERROR);
+        }
         // content 需支持模糊搜索
         // 限制爬虫
         if (size > 50) {
@@ -344,11 +349,10 @@ public class ClockInInfoController {
         queryWrapper.like(StringUtils.isNotBlank(address), "address", address)
                 .like(StringUtils.isNotBlank(deviceType), "deviceType", deviceType)
                 .eq(ObjectUtils.isNotEmpty(status), "status", status)
+                .eq(ObjectUtils.isNotEmpty(loginUser.getId()), "userId", loginUser.getId())
                 .eq(ObjectUtils.isNotEmpty(clockInAccount), "clockInAccount", clockInAccount);
         queryWrapper.orderBy(StringUtils.isNotBlank(sortField), sortOrder.equals(CommonConstant.SORT_ORDER_ASC), sortField);
         Page<ClockInInfo> clockInInfoPage = clockInInfoService.page(new Page<>(current, size), queryWrapper);
-        User loginUser = userService.getLoginUser(request);
-        clockInInfoPage.setRecords(clockInInfoPage.getRecords().stream().filter(clockInInfo -> clockInInfo.getUserId().equals(loginUser.getId())).collect(Collectors.toList()));
         return ResultUtils.success(clockInInfoPage);
     }
     // endregion

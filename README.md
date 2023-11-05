@@ -12,12 +12,18 @@
   <a href="https://github.com/qimu666/autoclockin-backend" target="_blank"><img src='https://img.shields.io/github/stars/qimu666/autoclockin-backend' alt='GitHub stars' class="no-zoom"></a>
 </div>
 
+
+### 联系作者：aqimu66
+
+<img src="doc/qrcode/wx.jpg" alt="aqimu66" width=180/> 
+
 ### 告知 ⚠️
 
-1. **使用此项目造成任何损失均由个人承担。**
+1. **需有redis、mysql、springboot、maven知识基础**
+2. **使用此项目造成任何损失均由个人承担。**
 3. **在开始之前请帮我点一下右上角的star。**
-5. **禁止任何平台或个人将此项目用于盈利或违法！**
-4. **此项目仅限学习交流，禁止用于任何商业或违法用途！**
+4. **禁止任何平台或个人将此项目用于盈利或违法！**
+5. **此项目仅限学习交流，禁止用于任何商业或违法用途！**
 
 ### 导航 🧭
 
@@ -30,17 +36,17 @@
 2. **异地打卡**
 3. **一键补卡**
 4. **ip池代理打卡**
-7. **钉钉机器人通知**
-5. **打卡失败自动重试**
-6. **邮件通知打卡状态**
-7. **新增职校家园同款位置api**
-8. ....
+5. **钉钉机器人通知**
+6. **打卡失败自动重试**
+7. **邮件通知打卡状态**
+8. **新增职校家园同款位置api**
+9. **浮动时间（在设置的时间后浮动15分钟左右）**
+10. ....
 
 ### 注意事项 👽
 
-1. **打卡时间避免高峰期**
-2. **设备信息尽量真实**
-3. **打卡地址越详细越好**
+1. **打卡时间避免高峰期，不要设置在0.10分之前及23.30之后**
+2. **设备信息务必真实**
 
 ### 快速开始 🚀
 
@@ -76,6 +82,8 @@ yarn build or npm run build
 
 #### 后端
 
+须有jdk,redis,mysql,maven环境
+
 启动：
 
 1. 执行sql目录下ddl.sql
@@ -85,9 +93,17 @@ yarn build or npm run build
 
 服务器部署：
 在本地修改配置之后，使用maven打包jar、上传jar到服务器、执行表sql、运行jar
-如果您正在使用这个项目并感觉良好，或者是想支持我继续开发，您可以通过如下`任意`方式支持我：
 
-### 支持这个项目
+## 配置导航 🗺
+
+- **腾讯地图api**:职校家园同款定位,参考地址：https://lbs.qq.com/dev/console/application/mine
+- **QQ邮箱授权码，用于邮件通知（可选):**   申请地址参考: https://blog.csdn.net/madifu/article/details/131246584
+- **使用ip池需要提供ip池订单号和ip提取密钥，并把服务器ip添加白名单（可选）：**https://www.ipzan.com?pid=20s0edv8g
+- **钉钉机器人打卡通知（可选）需提供机器人*secret和access-token*：**申请地址参考*https://open.dingtalk.com/document/isvapp/custom-bot-access-send-message*
+
+## 支持这个项目 :tea:
+
+**如果您正在使用这个项目并感觉良好，或者是想支持我继续开发，您可以通过如下`任意`方式支持我：**
 
 1. Star并分享 [Auto Clock In 自动打卡](https://github.com/qimu666/autoclockin-backend) :rocket:
 2. 通过以下二维码 一次性捐款，打赏作者一杯茶。:tea:
