@@ -88,10 +88,6 @@ public class KeyExpirationListener extends KeyExpirationEventMessageListener {
         if (StringUtils.isNotBlank(expiredKey) && expiredKey.startsWith(SIGN_USER_GROUP)) {
             String signId = expiredKey.replace(SIGN_USER_GROUP, StringUtils.EMPTY);
             redissonLockUtil.redissonDistributedLocks("user_sign_lock:" + signId, () -> {
-                if (StringUtils.isBlank(signId)) {
-                    redisTemplate.delete(SIGN_USER_GROUP + signId);
-                    throw new BusinessException(ErrorCode.OPERATION_ERROR, "打卡信息有误");
-                }
                 LambdaQueryWrapper<ClockInInfo> clockInInfoLambdaQueryWrapper = new LambdaQueryWrapper<>();
                 clockInInfoLambdaQueryWrapper.eq(ClockInInfo::getClockInAccount, signId);
                 ClockInInfo oldClockInInfo = clockInInfoService.getOne(clockInInfoLambdaQueryWrapper);
@@ -120,6 +116,14 @@ public class KeyExpirationListener extends KeyExpirationEventMessageListener {
                         clockInInfo.setStatus(ClockInStatusEnum.SUCCESS.getValue());
                         saveDailyCheckInInfo(clockInInfo, clockInInfoVo, sign.getMessage());
                     } else {
+                        if (sign.getMessage().contains("密码错误")) {
+                            LambdaUpdateWrapper<ClockInInfo> clockInInfoQueryWrapper = new LambdaUpdateWrapper<>();
+                            clockInInfoQueryWrapper.eq(ClockInInfo::getId, oldClockInInfo.getId());
+                            clockInInfoQueryWrapper.set(ClockInInfo::getStatus, ClockInStatusEnum.PAUSED.getValue());
+                            clockInInfoService.update(clockInInfoQueryWrapper);
+                            redisTemplate.delete(SIGN_USER_GROUP + clockInInfoVo.getClockInAccount());
+                            return;
+                        }
                         LambdaQueryWrapper<DailyCheckIn> dailyCheckInLambdaQueryWrapper = new LambdaQueryWrapper<>();
                         dailyCheckInLambdaQueryWrapper.eq(DailyCheckIn::getClockInAccount, clockInInfoVo.getClockInAccount());
                         DailyCheckIn checkInServiceOne = dailyCheckInService.getOne(dailyCheckInLambdaQueryWrapper);

@@ -1,3 +1,4 @@
 作者by: qimu
+微信：aqimu66
 Github主页：https://github.com/qimu666
 项目开源地址：https://github.com/qimu666/autoclockin-backend
