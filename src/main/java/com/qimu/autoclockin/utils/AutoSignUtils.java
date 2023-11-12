@@ -102,17 +102,17 @@ public class AutoSignUtils {
 
             try (CloseableHttpClient httpClient = HttpClientBuilder.create().build()) {
                 HttpPost httpPost = new HttpPost(LOGIN_URL);
-                httpPost.addHeader("os", "android");
-                httpPost.addHeader("appversion", "56");
-                httpPost.addHeader("content-type", "application/json;charset=UTF-8");
-                httpPost.addHeader("accept-encoding", "gzip");
-                httpPost.addHeader("user-agent", "okhttp/3.14.9");
-                httpPost.addHeader("cl_ip", "192.168.190.1");
+                httpPost.addHeader("os", OS);
+                httpPost.addHeader("appversion", APP_VERSION);
+                httpPost.addHeader("content-type", CONTENT_TYPE);
+                httpPost.addHeader("accept-encoding", ACCEPT_ENCODING);
+                httpPost.addHeader("user-agent", USER_AGENT);
+                httpPost.addHeader("cl_ip", CL_IP);
                 httpPost.addHeader("sign", sign);
                 httpPost.addHeader("phone", clockInInfoVo.getClockInAccount());
                 httpPost.addHeader("token", tokenResult.getData().getApitoken());
                 httpPost.addHeader("timestamp", String.valueOf(System.currentTimeMillis()));
-
+                log.info("login request data :{}", loginData);
                 StringEntity requestEntity = new StringEntity(JSONUtil.toJsonStr(loginData), ContentType.APPLICATION_JSON);
                 httpPost.setEntity(requestEntity);
                 HttpResponse response = httpClient.execute(httpPost);
@@ -143,7 +143,7 @@ public class AutoSignUtils {
      * @throws InterruptedException 中断异常
      */
     public static ClockInStatus sign(boolean enable, ClockInInfoVo clockInInfoVo, String ipPoolUrl, RedisTemplate<String, String> redisTemplate, TencentMapClient tencentMapClient) throws Exception {
-        clockInInfoVo= doTrimParamsClockInInfoVo(clockInInfoVo);
+        clockInInfoVo = doTrimParamsClockInInfoVo(clockInInfoVo);
 
         ResponseData.IpInfo ipInfo = checkCacheIpInfo(enable, clockInInfoVo, ipPoolUrl, redisTemplate);
         // 登录
@@ -173,7 +173,7 @@ public class AutoSignUtils {
      */
     private static ClockInInfoVo doTrimParamsClockInInfoVo(ClockInInfoVo clockInInfoVo) {
         ClockInInfoVo clock = new ClockInInfoVo();
-        BeanUtils.copyProperties(clockInInfoVo,clock);
+        BeanUtils.copyProperties(clockInInfoVo, clock);
         clock.setAddress(clockInInfoVo.getAddress().trim());
         clock.setClockInAccount(clockInInfoVo.getClockInAccount().trim());
         clock.setClockPassword(clock.getClockPassword().trim());
@@ -291,17 +291,17 @@ public class AutoSignUtils {
         try {
             CloseableHttpClient client = null;
             HttpPost httpPost = new HttpPost(SIGN_URL);
-            httpPost.addHeader("os", "android");
-            httpPost.addHeader("appversion", "56");
-            httpPost.addHeader("content-type", "application/json;charset=UTF-8");
-            httpPost.addHeader("accept-encoding", "gzip");
-            httpPost.addHeader("user-agent", "okhttp/3.14.9");
-            httpPost.addHeader("cl_ip", "192.168.190.1");
+            httpPost.addHeader("os", OS);
+            httpPost.addHeader("appversion", APP_VERSION);
+            httpPost.addHeader("content-type", CONTENT_TYPE);
+            httpPost.addHeader("accept-encoding", ACCEPT_ENCODING);
+            httpPost.addHeader("user-agent", USER_AGENT);
+            httpPost.addHeader("cl_ip", CL_IP);
             httpPost.addHeader("sign", sign);
             httpPost.addHeader("phone", clockInInfoVo.getDeviceType());
             httpPost.addHeader("token", loginResultVO.getToken());
             httpPost.addHeader("timestamp", String.valueOf(System.currentTimeMillis()));
-
+            log.info("sign request data :{}", signData);
             StringEntity requestEntity = new StringEntity(JSONUtil.toJsonStr(signData), ContentType.APPLICATION_JSON);
             httpPost.setEntity(requestEntity);
 
