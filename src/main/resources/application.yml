@@ -65,4 +65,12 @@ mybatis-plus:
       logic-delete-field: isDelete # 全局逻辑删除的实体字段名(since 3.3.0,配置后可以忽略不配置步骤2)
       logic-delete-value: 1 # 逻辑已删除值(默认为 1)
       logic-not-delete-value: 0 # 逻辑未删除值(默认为 0)
-
+# 为了适配职校家园频繁更新，使用配置文件管理版本等信息
+auto:
+  clock:
+    config:
+      os: android
+      appVersion: 59
+      loginUrl: https://sxbaapp.zcj.jyt.henan.gov.cn/api/relog.ashx
+      tokenUrl: https://sxbaapp.zcj.jyt.henan.gov.cn/api/getApitoken.ashx
+      signUrl: https://sxbaapp.zcj.jyt.henan.gov.cn/api/clockindaily20220827.ashx

@@ -11,6 +11,7 @@ import com.qimu.autoclockin.common.ErrorCode;
 import com.qimu.autoclockin.common.ResultUtils;
 import com.qimu.autoclockin.constant.CommonConstant;
 import com.qimu.autoclockin.exception.BusinessException;
+import com.qimu.autoclockin.model.dto.autoclockin.AutoClockInClient;
 import com.qimu.autoclockin.model.dto.clockInInfo.ClockInInfoAddRequest;
 import com.qimu.autoclockin.model.dto.clockInInfo.ClockInInfoQueryRequest;
 import com.qimu.autoclockin.model.dto.clockInInfo.ClockInInfoUpdateRequest;
@@ -50,7 +51,8 @@ import static com.qimu.autoclockin.utils.AutoSignUtils.login;
 @RequestMapping("/clockInInfo")
 @Slf4j
 public class ClockInInfoController {
-
+    @Resource
+    private AutoClockInClient autoClockInClient;
     @Resource
     private ClockInInfoService clockInInfoService;
     @Resource
@@ -105,7 +107,7 @@ public class ClockInInfoController {
         ClockInInfoVo clockInInfoVo = new ClockInInfoVo();
         BeanUtils.copyProperties(clockInInfoAddRequest, clockInInfoVo);
         try {
-            LoginResultVO loginResultVO = login(clockInInfoVo);
+            LoginResultVO loginResultVO = login(clockInInfoVo, autoClockInClient);
             LoginResult loginResult = loginResultVO.getLoginResult();
             if (ObjectUtils.anyNull(loginResult, loginResultVO)) {
                 throw new BusinessException(ErrorCode.OPERATION_ERROR, "账号测试失败：" + loginResult.getMsg());
@@ -181,7 +183,7 @@ public class ClockInInfoController {
         ClockInInfoVo clockInInfoVo = new ClockInInfoVo();
         BeanUtils.copyProperties(clockInInfoUpdateRequest, clockInInfoVo);
         try {
-            LoginResultVO loginResultVO = login(clockInInfoVo);
+            LoginResultVO loginResultVO = login(clockInInfoVo, autoClockInClient);
             LoginResult loginResult = loginResultVO.getLoginResult();
             if (ObjectUtils.anyNull(loginResult, loginResultVO)) {
                 throw new BusinessException(ErrorCode.OPERATION_ERROR, "账号测试失败：" + loginResult.getMsg());

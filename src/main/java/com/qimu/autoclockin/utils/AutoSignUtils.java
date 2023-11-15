@@ -7,6 +7,7 @@ import cn.hutool.http.HttpRequest;
 import cn.hutool.json.JSONUtil;
 import com.qimu.autoclockin.common.ErrorCode;
 import com.qimu.autoclockin.exception.BusinessException;
+import com.qimu.autoclockin.model.dto.autoclockin.AutoClockInClient;
 import com.qimu.autoclockin.model.dto.tencentmap.TencentMapClient;
 import com.qimu.autoclockin.model.vo.*;
 import lombok.extern.slf4j.Slf4j;
@@ -15,6 +16,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpHost;
 import org.apache.http.HttpResponse;
+import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.ContentType;
 import org.apache.http.entity.StringEntity;
@@ -36,6 +38,7 @@ import java.util.concurrent.TimeUnit;
 
 import static com.qimu.autoclockin.constant.IpConstant.IP_POOL_KEY;
 import static com.qimu.autoclockin.constant.RequestAddressConstant.*;
+import static com.qimu.autoclockin.model.enums.IpPoolStatusEnum.STARTING;
 
 /**
  * @author qimu
@@ -47,13 +50,21 @@ public class AutoSignUtils {
     /**
      * 获取token
      *
+     * @param autoClockInClient 自动登录客户端
      * @return {@link String}
      */
-    private static String getToken() {
+    private static String getToken(AutoClockInClient autoClockInClient) {
         try (CloseableHttpClient httpClient = HttpClientBuilder.create().build()) {
-            HttpPost httpPost = new HttpPost(TOKEN_URL);
+            HttpPost httpPost = new HttpPost(autoClockInClient.getTokenUrl());
             httpPost.setHeader("content-type", "application/json;charset=UTF-8");
             StringEntity requestEntity = new StringEntity("", ContentType.APPLICATION_JSON);
+            RequestConfig requestConfig = RequestConfig.custom()
+                    // 设置连接超时时间为5秒
+                    .setConnectTimeout(5000)
+                    // 设置读取超时时间为5秒
+                    .setSocketTimeout(5000)
+                    .build();
+            httpPost.setConfig(requestConfig);
             httpPost.setEntity(requestEntity);
             HttpResponse response = httpClient.execute(httpPost);
             HttpEntity responseEntity = response.getEntity();
@@ -83,13 +94,14 @@ public class AutoSignUtils {
     /**
      * 登录
      *
-     * @param clockInInfoVo 打卡信息签证官
+     * @param clockInInfoVo     打卡信息签证官
+     * @param autoClockInClient 自动登录客户端
      * @return {@link LoginResultVO}
-     * @throws InterruptedException 中断异常
+     * @throws Exception 例外
      */
-    public static LoginResultVO login(ClockInInfoVo clockInInfoVo) throws Exception {
+    public static LoginResultVO login(ClockInInfoVo clockInInfoVo, AutoClockInClient autoClockInClient) throws Exception {
         // 获取token
-        TokenResponse tokenResult = JSONUtil.toBean(JSONUtil.toJsonStr(getToken()), TokenResponse.class);
+        TokenResponse tokenResult = JSONUtil.toBean(JSONUtil.toJsonStr(getToken(autoClockInClient)), TokenResponse.class);
         if (Objects.nonNull(tokenResult) && tokenResult.getCode() == SUCCESS_CODE) {
             LoginData loginData = new LoginData();
             loginData.setPassword(MD5.create().digestHex(clockInInfoVo.getClockPassword()));
@@ -101,9 +113,9 @@ public class AutoSignUtils {
             TimeUnit.SECONDS.sleep(1);
 
             try (CloseableHttpClient httpClient = HttpClientBuilder.create().build()) {
-                HttpPost httpPost = new HttpPost(LOGIN_URL);
-                httpPost.addHeader("os", OS);
-                httpPost.addHeader("appversion", APP_VERSION);
+                HttpPost httpPost = new HttpPost(autoClockInClient.getLoginUrl());
+                httpPost.addHeader("os", autoClockInClient.getOs());
+                httpPost.addHeader("appversion", autoClockInClient.getAppVersion());
                 httpPost.addHeader("content-type", CONTENT_TYPE);
                 httpPost.addHeader("accept-encoding", ACCEPT_ENCODING);
                 httpPost.addHeader("user-agent", USER_AGENT);
@@ -115,6 +127,13 @@ public class AutoSignUtils {
                 log.info("login request data :{}", loginData);
                 StringEntity requestEntity = new StringEntity(JSONUtil.toJsonStr(loginData), ContentType.APPLICATION_JSON);
                 httpPost.setEntity(requestEntity);
+                RequestConfig requestConfig = RequestConfig.custom()
+                        // 设置连接超时时间为5秒
+                        .setConnectTimeout(5000)
+                        // 设置读取超时时间为5秒
+                        .setSocketTimeout(5000)
+                        .build();
+                httpPost.setConfig(requestConfig);
                 HttpResponse response = httpClient.execute(httpPost);
                 HttpEntity responseEntity = response.getEntity();
                 String result = EntityUtils.toString(responseEntity);
@@ -138,21 +157,26 @@ public class AutoSignUtils {
     /**
      * 打卡
      *
-     * @param clockInInfoVo 打卡信息签证
+     * @param clockInInfoVo     打卡信息签证
+     * @param enable            使可能
+     * @param ipPoolUrl         ip池url
+     * @param redisTemplate     redis模板
+     * @param tencentMapClient  腾讯地图客户端
+     * @param autoClockInClient 自动登录客户端
      * @return boolean
-     * @throws InterruptedException 中断异常
+     * @throws Exception 异常
      */
-    public static ClockInStatus sign(boolean enable, ClockInInfoVo clockInInfoVo, String ipPoolUrl, RedisTemplate<String, String> redisTemplate, TencentMapClient tencentMapClient) throws Exception {
+    public static ClockInStatus sign(boolean enable, ClockInInfoVo clockInInfoVo, String ipPoolUrl, RedisTemplate<String, String> redisTemplate, TencentMapClient tencentMapClient, AutoClockInClient autoClockInClient) throws Exception {
         clockInInfoVo = doTrimParamsClockInInfoVo(clockInInfoVo);
 
-        ResponseData.IpInfo ipInfo = checkCacheIpInfo(enable, clockInInfoVo, ipPoolUrl, redisTemplate);
+        ResponseData.IpInfo ipInfo = checkCacheIpInfo(enable && clockInInfoVo.getIsEnable().equals(STARTING.getValue()), clockInInfoVo, ipPoolUrl, redisTemplate);
         // 登录
-        LoginResultVO loginResultVO = login(clockInInfoVo);
+        LoginResultVO loginResultVO = login(clockInInfoVo,autoClockInClient);
         LoginResult loginResult = loginResultVO.getLoginResult();
         TimeUnit.SECONDS.sleep(1);
         ClockInStatus clockInStatus = new ClockInStatus();
         if (ObjectUtils.isNotEmpty(loginResultVO) && loginResult.getCode() == SUCCESS_CODE) {
-            return signRequest(ipInfo, clockInInfoVo, loginResultVO, loginResult, tencentMapClient);
+            return signRequest(ipInfo, clockInInfoVo, loginResultVO, loginResult, tencentMapClient,autoClockInClient);
         } else if (ObjectUtils.isNotEmpty(loginResult) && loginResult.getCode() != SUCCESS_CODE) {
             log.error("sign {} ", loginResult.getMsg());
             clockInStatus.setStatus(false);
@@ -219,7 +243,7 @@ public class AutoSignUtils {
      * @return {@link ResponseData.IpInfo}
      */
     private static ResponseData.IpInfo getIpInfo(Long userId, String ipPoolUrl, RedisTemplate<String, String> redisTemplate) {
-        cn.hutool.http.HttpResponse response = HttpRequest.get(ipPoolUrl).execute();
+        cn.hutool.http.HttpResponse response = HttpRequest.get(ipPoolUrl).setReadTimeout(5000).setConnectionTimeout(5000).execute();
         if (response.getStatus() == 200) {
             String result = response.body();
             if (StringUtils.isBlank(result)) {
@@ -262,14 +286,15 @@ public class AutoSignUtils {
     /**
      * 打卡请求
      *
-     * @param ipInfo        ip信息
-     * @param clockInInfoVo 登录信息vo
-     * @param loginResultVO 登录结果vo
-     * @param loginResult   登录结果
+     * @param ipInfo            ip信息
+     * @param clockInInfoVo     登录信息vo
+     * @param loginResultVO     登录结果vo
+     * @param loginResult       登录结果
+     * @param autoClockInClient
      * @return {@link ClockInStatus}
      * @throws InterruptedException 中断异常
      */
-    private static ClockInStatus signRequest(ResponseData.IpInfo ipInfo, ClockInInfoVo clockInInfoVo, LoginResultVO loginResultVO, LoginResult loginResult, TencentMapClient tencentMapClient) throws InterruptedException {
+    private static ClockInStatus signRequest(ResponseData.IpInfo ipInfo, ClockInInfoVo clockInInfoVo, LoginResultVO loginResultVO, LoginResult loginResult, TencentMapClient tencentMapClient, AutoClockInClient autoClockInClient) throws InterruptedException {
         SignData signData = new SignData();
         signData.setDtype(1);
         signData.setProbability(0);
@@ -290,9 +315,9 @@ public class AutoSignUtils {
         ClockInStatus clockInStatus = new ClockInStatus();
         try {
             CloseableHttpClient client = null;
-            HttpPost httpPost = new HttpPost(SIGN_URL);
-            httpPost.addHeader("os", OS);
-            httpPost.addHeader("appversion", APP_VERSION);
+            HttpPost httpPost = new HttpPost(autoClockInClient.getSignUrl());
+            httpPost.addHeader("os", autoClockInClient.getOs());
+            httpPost.addHeader("appversion", autoClockInClient.getAppVersion());
             httpPost.addHeader("content-type", CONTENT_TYPE);
             httpPost.addHeader("accept-encoding", ACCEPT_ENCODING);
             httpPost.addHeader("user-agent", USER_AGENT);
@@ -314,6 +339,13 @@ public class AutoSignUtils {
             } else {
                 client = HttpClientBuilder.create().build();
             }
+            RequestConfig requestConfig = RequestConfig.custom()
+                    // 设置连接超时时间为5秒
+                    .setConnectTimeout(5000)
+                    // 设置读取超时时间为5秒
+                    .setSocketTimeout(5000)
+                    .build();
+            httpPost.setConfig(requestConfig);
             HttpResponse response = client.execute(httpPost);
             HttpEntity responseEntity = response.getEntity();
             String result = EntityUtils.toString(responseEntity);

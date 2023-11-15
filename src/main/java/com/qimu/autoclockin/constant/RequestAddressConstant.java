@@ -7,14 +7,7 @@ package com.qimu.autoclockin.constant;
  * @Description: 请求地址常数
  */
 public interface RequestAddressConstant {
-    /**
-     * os 操作系统
-     */
-    String OS = "android";
-    /**
-     * 应用程序版本
-     */
-    String APP_VERSION = "59";
+
     /**
      * 内容类型
      */
@@ -37,11 +30,6 @@ public interface RequestAddressConstant {
     String LONGITUDE_AND_LATITUDE = "https://apis.map.qq.com/jsapi?qt=geoc&addr=";
 
     /**
-     * 标记url
-     */
-    String TOKEN_URL = "http://sxbaapp.zcj.jyt.henan.gov.cn/api/getApitoken.ashx";
-
-    /**
      * 密钥
      */
     String SECRET_KEY = "Anything_2023";
@@ -53,19 +41,4 @@ public interface RequestAddressConstant {
      * 数据类型
      */
     int DTYPE = 6;
-    /**
-     * 登录网址
-     */
-    String LOGIN_URL = "http://sxbaapp.zcj.jyt.henan.gov.cn/api/relog.ashx";
-
-
-    /**
-     * 标志url
-     */
-    String SIGN_URL = "http://sxbaapp.zcj.jyt.henan.gov.cn/api/clockindaily20220827.ashx";
-
-    /**
-     * 报告界面
-     */
-    String REPORTING_INTERFACE = "https://sxbaapp.zcj.jyt.henan.gov.cn/interface/ReportHandler.ashx";
 }

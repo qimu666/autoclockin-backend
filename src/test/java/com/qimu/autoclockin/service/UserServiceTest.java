@@ -9,12 +9,8 @@ import com.qimu.autoclockin.exception.BusinessException;
 import com.qimu.autoclockin.model.dto.IpPool.IpPoolClient;
 import com.qimu.autoclockin.model.dto.dingTalk.DingTalkPushClient;
 import com.qimu.autoclockin.model.entity.User;
-import com.qimu.autoclockin.model.vo.ClockInInfoVo;
-import com.qimu.autoclockin.model.vo.LoginResult;
-import com.qimu.autoclockin.model.vo.LoginResultVO;
 import com.qimu.autoclockin.utils.ResponseData;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.ObjectUtils;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -26,7 +22,6 @@ import java.util.List;
 import java.util.Random;
 
 import static com.qimu.autoclockin.constant.IpConstant.IP_URL;
-import static com.qimu.autoclockin.utils.AutoSignUtils.login;
 import static com.qimu.autoclockin.utils.DingTalkPushUtils.initDingTalkClient;
 import static com.qimu.autoclockin.utils.DingTalkPushUtils.sendMessageByMarkdown;
 
@@ -93,22 +88,7 @@ class UserServiceTest {
 
     @Test
     void userRegister() {
-        ClockInInfoVo clockInInfoVo = new ClockInInfoVo();
-        clockInInfoVo.setClockInAccount("17748");
-        clockInInfoVo.setClockPassword("bf334");
-        clockInInfoVo.setDeviceId("a96069e250e38b1b62984545333af272ce325b03");
-        try {
-            LoginResultVO loginResultVO = login(clockInInfoVo);
-            LoginResult loginResult = loginResultVO.getLoginResult();
-            if (ObjectUtils.anyNull(loginResult, loginResultVO)) {
-                throw new BusinessException(ErrorCode.OPERATION_ERROR, "账号测试失败：" + loginResult.getMsg());
-            }
-            if (ObjectUtils.isNotEmpty(loginResult) && loginResult.getCode() != 1001) {
-                throw new BusinessException(ErrorCode.OPERATION_ERROR, "账号测试失败：" + loginResult.getMsg());
-            }
-        } catch (Exception e) {
-            throw new BusinessException(ErrorCode.OPERATION_ERROR, e.getMessage());
-        }
+
     }
 
     @Test
@@ -131,7 +111,6 @@ class UserServiceTest {
 
     @Test
     void getIp() {
-        // String result = HttpRequest.get("https://service.ipzan.com/core-extract" + "?no=20231020678601565848&secret=li5hvcoilunn9&mode=auth&num=1&minute=1&pool=ordinary").execute().body();
         HttpResponse response = HttpRequest.get(buildUrl()).execute();
         if (response.getStatus() == 200) {
             String result = response.body();

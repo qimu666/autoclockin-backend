@@ -7,6 +7,7 @@ import com.qimu.autoclockin.common.ErrorCode;
 import com.qimu.autoclockin.config.EmailConfig;
 import com.qimu.autoclockin.exception.BusinessException;
 import com.qimu.autoclockin.model.dto.IpPool.IpPoolClient;
+import com.qimu.autoclockin.model.dto.autoclockin.AutoClockInClient;
 import com.qimu.autoclockin.model.dto.dingTalk.DingTalkPushClient;
 import com.qimu.autoclockin.model.dto.tencentmap.TencentMapClient;
 import com.qimu.autoclockin.model.entity.ClockInInfo;
@@ -56,6 +57,8 @@ import static com.qimu.autoclockin.utils.DingTalkPushUtils.sendMessageByMarkdown
 @Component
 @Slf4j
 public class KeyExpirationListener extends KeyExpirationEventMessageListener {
+    @Resource
+    private AutoClockInClient autoClockInClient;
     @Resource
     private TencentMapClient tencentMapClient;
     @Resource
@@ -111,7 +114,7 @@ public class KeyExpirationListener extends KeyExpirationEventMessageListener {
                 clockInInfo.setId(clockInInfoVo.getId());
                 try {
                     boolean isEnable = ipPoolClient.isEnableTrue() && clockInInfoVo.getIsEnable().equals(STARTING.getValue());
-                    ClockInStatus sign = AutoSignUtils.sign(isEnable, clockInInfoVo, buildUrl(), redisTemplate, tencentMapClient);
+                    ClockInStatus sign = AutoSignUtils.sign(isEnable, clockInInfoVo, buildUrl(), redisTemplate, tencentMapClient,autoClockInClient);
                     if (sign.getStatus()) {
                         clockInInfo.setStatus(ClockInStatusEnum.SUCCESS.getValue());
                         saveDailyCheckInInfo(clockInInfo, clockInInfoVo, sign.getMessage());
