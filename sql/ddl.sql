@@ -17,7 +17,7 @@ create table if not exists clock_in_info
     longitude      varchar(256)                       not null comment '经度',
     latitude       varchar(256)                       not null comment '纬度',
     clockInTime    varchar(256)                       null comment ' 打卡时间',
-    status         tinyint  default 0                 not null comment '打卡状态( 0-未开始 1-已打卡)',
+    status         tinyint  default 1                 not null comment '打卡状态( 0-未开始 1-已打卡)',
     isEnable       tinyint  default 0                 not null comment '是否启用IP池( 0-关闭 1-开启)',
     createTime     datetime default CURRENT_TIMESTAMP not null comment '创建时间',
     updateTime     datetime default CURRENT_TIMESTAMP not null on update CURRENT_TIMESTAMP comment '更新时间',

@@ -70,7 +70,8 @@ auto:
   clock:
     config:
       os: android
-      appVersion: 59
-      loginUrl: https://sxbaapp.zcj.jyt.henan.gov.cn/api/relog.ashx
-      tokenUrl: https://sxbaapp.zcj.jyt.henan.gov.cn/api/getApitoken.ashx
-      signUrl: https://sxbaapp.zcj.jyt.henan.gov.cn/api/clockindaily20220827.ashx
+      appVersion: 65
+      loginUrl: https://sxbaapp.dxtxl.com/api/relog.ashx
+      tokenUrl: https://sxbaapp.dxtxl.com/api/getApitoken.ashx
+      signUrl: https://sxbaapp.dxtxl.com/api/clockindaily20220827.ashx
+
